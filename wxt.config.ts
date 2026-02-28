@@ -5,9 +5,9 @@ import tailwindcss from "@tailwindcss/vite"
 export default defineConfig({
   srcDir: "src",
   manifest: {
-    name: "wxt-svelte-starter",
-    description: "manifest.json description",
-    //permission: ["storage"],
+    name: "hackernews-summarize-comments",
+    description: "Summarize comments on hackernews submission page using AI",
+    permission: ["storage"],
   },
   modules: ["@wxt-dev/module-svelte"],
   vite: () => ({
