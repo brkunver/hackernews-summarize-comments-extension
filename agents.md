@@ -23,7 +23,7 @@ Hooks defined in your project can modify your manifest
 Your extension's manifest.json will be output to .output/{target}/manifest.json when running wxt build.
 
 - this extension should work on hackernews submission page
-- this project uses svelte 5 for frontend( runes syntax )
+- this project uses svelte 5 for frontend
 - this extension aims manifest v3
 - this project uses tailwindcss v4 for styling.
 - this project uses typescript for development.
