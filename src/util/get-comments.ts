@@ -1,4 +1,4 @@
-function getHNCommentsForLLM(): string {
+export function getHNCommentsForLLM(): string {
   const commentRows = document.querySelectorAll(".comtr")
   let combinedString = "Hacker News Yorumları:\n\n"
 
@@ -20,6 +20,3 @@ function getHNCommentsForLLM(): string {
 
   return combinedString
 }
-
-const llmInput = getHNCommentsForLLM()
-console.log(llmInput)
