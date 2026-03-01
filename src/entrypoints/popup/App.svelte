@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { GenerateText } from "~/util/generate-ai"
   import { savedSummariesStore } from "~/util/storage"
   import { onMount } from "svelte"
   import snarkdown from "snarkdown"
@@ -11,11 +10,11 @@
   let error = $state("")
   let isGeneratingSummary = $state(false)
   let currentUrl = $state("")
+  let isProcessingInBackground = $state(false)
 
-  // Load cached summary on component mount
+  // Load cached summary on component mount and listen for background messages
   onMount(async () => {
     try {
-      // Get current tab URL
       const [tab] = await browser.tabs.query({ active: true, currentWindow: true })
       if (tab.url) {
         currentUrl = tab.url
@@ -24,6 +23,15 @@
     } catch (err) {
       console.error("Error loading cached summary:", err)
     }
+
+    browser.runtime.onMessage.addListener(message => {
+      if (message.action === "summaryComplete" && message.url === currentUrl) {
+        summary = message.summary
+        isProcessingInBackground = false
+        isGeneratingSummary = false
+        console.log("Summary completed in background:", message.summary)
+      }
+    })
   })
 
   async function loadCachedSummary(url: string) {
@@ -31,29 +39,12 @@
       const savedSummaries = await savedSummariesStore.getValue()
       const cachedSummary = savedSummaries.find(item => item.id === url)
 
-      if (cachedSummary && cachedSummary.summary && cachedSummary.summary.trim() !== "") {
+      if (cachedSummary?.summary?.trim()) {
         summary = cachedSummary.summary
         console.log("Loaded cached summary for:", url)
       }
     } catch (err) {
       console.error("Error loading cached summary:", err)
-    }
-  }
-
-  async function saveSummaryToCache(url: string, summaryText: string) {
-    try {
-      const savedSummaries = await savedSummariesStore.getValue()
-
-      // Remove existing entry for this URL if it exists
-      const filteredSummaries = savedSummaries.filter(item => item.id !== url)
-
-      // Add new entry
-      const updatedSummaries = [...filteredSummaries, { id: url, summary: summaryText }]
-
-      await savedSummariesStore.setValue(updatedSummaries)
-      console.log("Saved summary to cache for:", url)
-    } catch (err) {
-      console.error("Error saving summary to cache:", err)
     }
   }
 
@@ -63,12 +54,10 @@
     error = ""
 
     try {
-      // Get the active tab
       const [tab] = await browser.tabs.query({ active: true, currentWindow: true })
 
       if (!tab.id) {
         error = "No active tab found"
-        console.error("No active tab found")
         return
       }
 
@@ -79,27 +68,41 @@
 
       currentUrl = tab.url
 
-      // Check if we have a cached summary first
       await loadCachedSummary(tab.url)
 
-      if (summary && summary.trim() !== "") {
-        // We have a cached summary, show it and don't regenerate
+      if (summary?.trim()) {
         console.log("Using cached summary")
         return
       }
 
-      // Send message to content script
-      const response = await browser.tabs.sendMessage(tab.id, { action: "getComments" })
+      const contentResponse = await browser.tabs.sendMessage(tab.id, { action: "getComments" })
 
-      if (response.success && response.comments) {
-        comments = response.comments
-        console.log("Comments received:", response.comments)
+      if (contentResponse?.success && contentResponse.comments) {
+        comments = contentResponse.comments
+        console.log("Comments received:", contentResponse.comments)
 
-        // Generate summary
-        await generateSummary()
+        isProcessingInBackground = true
+        isGeneratingSummary = true
+
+        const backgroundResponse = await browser.runtime.sendMessage({
+          action: "generateSummary",
+          comments: contentResponse.comments,
+          url: tab.url,
+        })
+
+        if (backgroundResponse?.success) {
+          summary = backgroundResponse.summary
+          console.log("Summary generated in background:", backgroundResponse.summary)
+        } else {
+          error = backgroundResponse?.error || "Failed to generate summary"
+          console.error("Error generating summary:", backgroundResponse?.error)
+        }
+
+        isProcessingInBackground = false
+        isGeneratingSummary = false
       } else {
-        error = response.error || "Failed to get comments"
-        console.error("Error getting comments:", response.error)
+        error = contentResponse?.error || "Failed to get comments"
+        console.error("Error getting comments:", contentResponse?.error)
       }
     } catch (err) {
       error = "Failed to communicate with content script"
@@ -107,36 +110,6 @@
     } finally {
       isLoading = false
       buttonText = "Get Comments"
-    }
-  }
-
-  async function generateSummary() {
-    if (!comments || comments.trim() === "") {
-      error = "No comments available to summarize"
-      return
-    }
-
-    isGeneratingSummary = true
-    error = ""
-
-    try {
-      const summaryText = await GenerateText(comments)
-      if (summaryText && summaryText.trim() !== "") {
-        summary = summaryText
-        console.log("Summary generated:", summaryText)
-
-        // Save to cache
-        if (currentUrl) {
-          await saveSummaryToCache(currentUrl, summaryText)
-        }
-      } else {
-        error = "AI returned empty summary"
-      }
-    } catch (err) {
-      error = "Failed to generate summary: " + (err instanceof Error ? err.message : String(err))
-      console.error("Error generating summary:", err)
-    } finally {
-      isGeneratingSummary = false
     }
   }
 
@@ -151,7 +124,7 @@
   <div class="space-y-3 mb-4">
     <button
       onclick={getComments}
-      disabled={isLoading || isGeneratingSummary}
+      disabled={isLoading || isGeneratingSummary || isProcessingInBackground}
       class="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white font-semibold py-2 px-4 rounded transition-colors"
     >
       {buttonText}
@@ -174,7 +147,13 @@
   {/if}
 
   <!-- Loading States -->
-  {#if isGeneratingSummary}
+  {#if isProcessingInBackground}
+    <div class="mb-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded-lg">
+      <p class="text-sm">Processing in background... You can close this window.</p>
+    </div>
+  {/if}
+
+  {#if isGeneratingSummary && !isProcessingInBackground}
     <div class="mb-4 p-3 bg-blue-100 border border-blue-400 text-blue-700 rounded-lg">
       <p class="text-sm">Generating summary with AI...</p>
     </div>
