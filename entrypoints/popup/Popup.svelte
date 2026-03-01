@@ -19,6 +19,7 @@
       if (tab.url) {
         currentUrl = tab.url
         await loadCachedSummary(tab.url)
+        updateButtonText()
       }
     } catch (err) {
       console.error("Error loading cached summary:", err)
@@ -29,6 +30,7 @@
         summary = message.summary
         isProcessingInBackground = false
         isGeneratingSummary = false
+        updateButtonText()
         console.log("Summary completed in background:", message.summary)
       }
     })
@@ -45,6 +47,14 @@
       }
     } catch (err) {
       console.error("Error loading cached summary:", err)
+    }
+  }
+
+  function updateButtonText() {
+    if (summary?.trim()) {
+      buttonText = "Regenerate Summary"
+    } else {
+      buttonText = "Generate Summary"
     }
   }
 
@@ -99,7 +109,7 @@
       console.error("Error:", err)
     } finally {
       isLoading = false
-      buttonText = "Get Comments"
+      updateButtonText()
     }
   }
 
