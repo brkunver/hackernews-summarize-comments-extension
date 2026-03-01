@@ -1,5 +1,5 @@
-import { GenerateText } from "~/util/generate-ai"
-import { savedSummariesStore } from "~/util/storage"
+import { GenerateText } from "@@/util/generate-ai"
+import { savedSummariesStore } from "@@/util/storage"
 
 export default defineBackground(() => {
   console.log("Hello background!", { id: browser.runtime.id })

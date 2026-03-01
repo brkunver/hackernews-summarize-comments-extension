@@ -1,4 +1,4 @@
-import { getHNCommentsForLLM } from "~/util/get-comments"
+import { getHNCommentsForLLM } from "@@/util/get-comments"
 
 export default defineContentScript({
   matches: ["https://news.ycombinator.com/*"],
