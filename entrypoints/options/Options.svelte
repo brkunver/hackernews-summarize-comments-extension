@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { apiKeyStore, modelStore, systemPromptStore } from "~/util/storage"
+  import { apiKeyStore, modelStore, systemPromptStore, savedSummariesStore } from "~/util/storage"
   import { onMount } from "svelte"
 
   let apiKey = $state("")
@@ -8,6 +8,7 @@
   let isLoading = $state(false)
   let saveMessage = $state("")
   let isEditingPrompt = $state(false)
+  let cachedSummaries = $state<{ id: string; summary: string }[]>([])
 
   const availableModels = ["gemini-2.5-flash", "gemini-3.0-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"]
 
@@ -17,6 +18,7 @@
       apiKey = await apiKeyStore.getValue()
       selectedModel = await modelStore.getValue()
       systemPrompt = await systemPromptStore.getValue()
+      cachedSummaries = await savedSummariesStore.getValue()
     } catch (error) {
       console.error("Error loading settings:", error)
     }
@@ -47,6 +49,40 @@
 
   function togglePromptEdit() {
     isEditingPrompt = !isEditingPrompt
+  }
+
+  async function deleteCachedSummary(id: string) {
+    try {
+      const updatedSummaries = cachedSummaries.filter(summary => summary.id !== id)
+      cachedSummaries = updatedSummaries
+      await savedSummariesStore.setValue(updatedSummaries)
+    } catch (error) {
+      console.error("Error deleting cached summary:", error)
+    }
+  }
+
+  async function deleteAllCachedSummaries() {
+    if (confirm("Are you sure you want to delete all cached summaries? This action cannot be undone.")) {
+      try {
+        cachedSummaries = []
+        await savedSummariesStore.setValue([])
+      } catch (error) {
+        console.error("Error deleting all cached summaries:", error)
+      }
+    }
+  }
+
+  function truncateUrl(url: string): string {
+    try {
+      const urlObj = new URL(url)
+      return urlObj.pathname + urlObj.search
+    } catch {
+      return url
+    }
+  }
+
+  function truncateSummary(summary: string, maxLength: number = 50): string {
+    return summary.length > maxLength ? summary.substring(0, maxLength) + "..." : summary
   }
 </script>
 
@@ -146,5 +182,54 @@
         {/if}
       </div>
     </div>
+
+    <!-- Cached Summaries -->
+    {#if cachedSummaries.length > 0}
+      <div class="mt-8">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-xl font-semibold">Cached Summaries ({cachedSummaries.length})</h2>
+          <button
+            onclick={deleteAllCachedSummaries}
+            class="px-3 py-1 text-sm bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
+          >
+            Delete All
+          </button>
+        </div>
+        <div class="bg-gray-800 border border-gray-700 rounded-lg p-4 max-h-64 overflow-y-auto">
+          <div class="space-y-2">
+            {#each cachedSummaries as summary (summary.id)}
+              <div
+                class="flex items-center justify-between p-2 bg-gray-700 rounded hover:bg-gray-600 transition-colors"
+              >
+                <div class="flex-1 min-w-0">
+                  <a
+                    href={summary.id}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-sm text-blue-300 hover:text-blue-200 truncate underline cursor-pointer"
+                  >
+                    {truncateUrl(summary.id)}
+                  </a>
+                  <div class="text-xs text-gray-400 truncate">{truncateSummary(summary.summary)}</div>
+                </div>
+                <button
+                  onclick={() => deleteCachedSummary(summary.id)}
+                  class="ml-2 px-2 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            {/each}
+          </div>
+        </div>
+      </div>
+    {:else}
+      <div class="mt-8">
+        <h2 class="text-xl font-semibold mb-4">Cached Summaries</h2>
+        <div class="bg-gray-800 border border-gray-700 rounded-lg p-4">
+          <p class="text-sm text-gray-400">No cached summaries found</p>
+        </div>
+      </div>
+    {/if}
   </div>
 </main>
