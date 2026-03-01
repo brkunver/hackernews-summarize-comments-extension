@@ -68,12 +68,8 @@
 
       currentUrl = tab.url
 
+      // Always load cached summary for display, but don't return early
       await loadCachedSummary(tab.url)
-
-      if (summary?.trim()) {
-        console.log("Using cached summary")
-        return
-      }
 
       const contentResponse = await browser.tabs.sendMessage(tab.id, { action: "getComments" })
 
@@ -90,16 +86,10 @@
           url: tab.url,
         })
 
-        if (backgroundResponse?.success) {
-          summary = backgroundResponse.summary
-          console.log("Summary generated in background:", backgroundResponse.summary)
-        } else {
-          error = backgroundResponse?.error || "Failed to generate summary"
-          console.error("Error generating summary:", backgroundResponse?.error)
-        }
-
-        isProcessingInBackground = false
-        isGeneratingSummary = false
+        // Background script handles response via message listener, so we don't need to check here
+        // The summary will be updated through the 'summaryComplete' message
+        console.log("Summary generation started in background")
+        // Don't reset loading states here - they will be reset when summaryComplete message arrives
       } else {
         error = contentResponse?.error || "Failed to get comments"
         console.error("Error getting comments:", contentResponse?.error)
