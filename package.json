@@ -1,7 +1,7 @@
 {
   "name": "hackernews-summarize-comments",
-  "description": "manifest.json description",
-  "private": false,
+  "description": "Summarize hackernews comments using AI",
+  "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
@@ -32,5 +32,10 @@
     "@tailwindcss/oxide",
     "esbuild",
     "spawn-sync"
-  ]
+  ],
+  "dependencies": {
+    "@ai-sdk/google": "^3.0.34",
+    "ai": "^6.0.105",
+    "snarkdown": "^2.0.0"
+  }
 }
