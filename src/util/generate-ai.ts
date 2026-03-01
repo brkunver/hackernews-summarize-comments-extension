@@ -2,16 +2,24 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { apiKeyStore, modelStore, systemPromptStore } from "./storage"
 import { generateText } from "ai"
 
-const googleGenerativeAI = createGoogleGenerativeAI({
-  apiKey: await apiKeyStore.getValue(),
-})
+let googleGenerativeAI: ReturnType<typeof createGoogleGenerativeAI> | null = null
+
+async function getGoogleGenerativeAI() {
+  if (!googleGenerativeAI) {
+    googleGenerativeAI = createGoogleGenerativeAI({
+      apiKey: await apiKeyStore.getValue(),
+    })
+  }
+  return googleGenerativeAI
+}
 
 export async function GenerateText(prompt: string) {
   const model = await modelStore.getValue()
   const systemPrompt = await systemPromptStore.getValue()
+  const ai = await getGoogleGenerativeAI()
 
   const { text } = await generateText({
-    model: googleGenerativeAI(model),
+    model: ai(model),
     system: systemPrompt,
     prompt: prompt,
   })
