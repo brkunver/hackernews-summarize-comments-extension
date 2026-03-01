@@ -7,7 +7,7 @@ export default defineConfig({
   manifest: {
     name: "hackernews-summarize-comments",
     description: "Summarize comments on hackernews submission page using AI",
-    permission: ["storage"],
+    permission: ["storage", "tabs"],
   },
   modules: ["@wxt-dev/module-svelte"],
   vite: () => ({
