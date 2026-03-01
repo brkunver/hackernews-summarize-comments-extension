@@ -47,6 +47,15 @@ import { storage } from "#imports"
 const showChangelogOnUpdate = storage.defineItem<boolean>("local:showChangelogOnUpdate", {
   fallback: true,
 })
+
+// usage
+await showChangelogOnUpdate.getValue();
+await showChangelogOnUpdate.setValue(false);
+await showChangelogOnUpdate.removeValue();
+const unwatch = showChangelogOnUpdate.watch((newValue) => {
+  // ...
+});
+
 ```
 
 ## i18n usage
