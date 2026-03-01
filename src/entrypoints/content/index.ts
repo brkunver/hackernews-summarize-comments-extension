@@ -13,6 +13,7 @@ export default defineContentScript({
         } catch (error) {
           sendResponse({ success: false, error: error instanceof Error ? error.message : String(error) })
         }
+        return true
       }
       return true // Keep the message channel open for async response
     })
