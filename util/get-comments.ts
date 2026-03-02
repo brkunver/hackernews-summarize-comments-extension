@@ -1,6 +1,6 @@
 export function getHNCommentsForLLM(): string {
   const commentRows = document.querySelectorAll(".comtr")
-  let combinedString = "Hacker News Yorumları:\n\n"
+  let combinedString = "Comments :\n\n"
 
   commentRows.forEach(row => {
     const authorEl = row.querySelector(".hnuser") as HTMLElement | null
