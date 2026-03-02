@@ -5,7 +5,7 @@ export default defineBackground(() => {
   console.log("Hello background!", { id: browser.runtime.id })
 
   // Handle messages from popup
-  browser.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
+  browser.runtime.onMessage.addListener(async (message, _sender, sendResponse) => {
     if (message.action === "generateSummary") {
       try {
         const { comments, url } = message
