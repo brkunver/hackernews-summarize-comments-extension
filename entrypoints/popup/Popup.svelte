@@ -1,5 +1,11 @@
 <script lang="ts">
-  import { savedSummariesStore, modelStore, type SavedSummaryV2 } from "~/util/storage"
+  import {
+    savedSummariesStore,
+    modelStore,
+    ongoingGenerationStore,
+    type SavedSummaryV2,
+    type OngoingGeneration,
+  } from "~/util/storage"
   import { onMount } from "svelte"
   import snarkdown from "snarkdown"
 
@@ -21,6 +27,7 @@
       if (tab.url) {
         currentUrl = tab.url
         await loadCachedSummary(tab.url)
+        await checkOngoingGeneration()
         updateButtonText()
       }
     } catch (err) {
@@ -59,6 +66,21 @@
       buttonText = "Regenerate Summary"
     } else {
       buttonText = "Generate Summary"
+    }
+  }
+
+  async function checkOngoingGeneration() {
+    try {
+      const ongoing = await ongoingGenerationStore.getValue()
+      if (ongoing && ongoing.url === currentUrl && ongoing.timestamp > Date.now() - 300000) {
+        // 5 minutes timeout
+        isProcessingInBackground = true
+        isGeneratingSummary = true
+        currentModelName = ongoing.model
+        updateButtonText()
+      }
+    } catch (err) {
+      console.error("Error checking ongoing generation:", err)
     }
   }
 

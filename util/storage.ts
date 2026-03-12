@@ -33,6 +33,16 @@ export const savedSummariesStore = storage.defineItem<SavedSummaryV2[]>("local:s
   },
 })
 
+export interface OngoingGeneration {
+  url: string
+  model: string
+  timestamp: number
+}
+
+export const ongoingGenerationStore = storage.defineItem<OngoingGeneration | null>("local:ongoingGeneration", {
+  fallback: null,
+})
+
 export const systemPromptStore = storage.defineItem<string>("local:systemPrompt", {
   fallback: `You are an assistant that summarizes Hacker News comment threads.
 

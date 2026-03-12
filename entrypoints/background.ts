@@ -1,5 +1,5 @@
 import { GenerateText } from "@@/util/generate-ai"
-import { savedSummariesStore, modelStore } from "@@/util/storage"
+import { savedSummariesStore, modelStore, ongoingGenerationStore } from "@@/util/storage"
 
 export default defineBackground(() => {
   console.log("Hello background!", { id: browser.runtime.id })
@@ -10,13 +10,18 @@ export default defineBackground(() => {
       try {
         const { comments, url } = message
 
+        // Get current model and start tracking ongoing generation
+        const currentModel = await modelStore.getValue()
+        await ongoingGenerationStore.setValue({
+          url,
+          model: currentModel,
+          timestamp: Date.now(),
+        })
+
         // Generate summary in background
         const summaryText = await GenerateText(comments)
 
         if (summaryText && summaryText.trim() !== "") {
-          // Get current model to set as createdBy
-          const currentModel = await modelStore.getValue()
-
           // Save to cache
           const savedSummaries = await savedSummariesStore.getValue()
           const filteredSummaries = savedSummaries.filter(item => item.id !== url)
@@ -30,6 +35,9 @@ export default defineBackground(() => {
           ]
           await savedSummariesStore.setValue(updatedSummaries)
 
+          // Clear ongoing generation
+          await ongoingGenerationStore.setValue(null)
+
           // Notify popup that summary is ready
           browser.runtime.sendMessage({
             action: "summaryComplete",
@@ -39,10 +47,14 @@ export default defineBackground(() => {
 
           sendResponse({ success: true, summary: summaryText })
         } else {
+          // Clear ongoing generation on error
+          await ongoingGenerationStore.setValue(null)
           sendResponse({ success: false, error: "AI returned empty summary" })
         }
       } catch (err) {
         console.error("Error generating summary in background:", err)
+        // Clear ongoing generation on error
+        await ongoingGenerationStore.setValue(null)
         sendResponse({
           success: false,
           error: "Failed to generate summary: " + (err instanceof Error ? err.message : String(err)),
