@@ -18,8 +18,6 @@ In WXT, there is no manifest.json file in your source code. Instead, WXT generat
 
 Global options defined in wxt.config.ts file
 Entrypoint-specific options defined in your entrypoints
-WXT Modules added to your project can modify your manifest
-Hooks defined in your project can modify your manifest
 Your extension's manifest.json will be output to .output/{target}/manifest.json when running wxt build.
 
 - this extension should work on hackernews submission page
