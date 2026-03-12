@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { savedSummariesStore, modelStore } from "~/util/storage"
+  import { savedSummariesStore, modelStore, type SavedSummaryV2 } from "~/util/storage"
   import { onMount } from "svelte"
   import snarkdown from "snarkdown"
 
@@ -12,6 +12,7 @@
   let currentUrl = $state("")
   let isProcessingInBackground = $state(false)
   let currentModelName = $state("")
+  let summaryCreatedBy = $state("")
 
   // Load cached summary on component mount and listen for background messages
   onMount(async () => {
@@ -29,6 +30,7 @@
     browser.runtime.onMessage.addListener(message => {
       if (message.action === "summaryComplete" && message.url === currentUrl) {
         summary = message.summary
+        summaryCreatedBy = currentModelName
         isProcessingInBackground = false
         isGeneratingSummary = false
         updateButtonText()
@@ -44,6 +46,7 @@
 
       if (cachedSummary?.summary?.trim()) {
         summary = cachedSummary.summary
+        summaryCreatedBy = cachedSummary.createdBy
         console.log("Loaded cached summary for:", url)
       }
     } catch (err) {
@@ -165,7 +168,12 @@
   <!-- Summary Display -->
   {#if summary}
     <div class="mb-4">
-      <h2 class="text-lg font-semibold mb-2">Summary</h2>
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-lg font-semibold">Summary</h2>
+        {#if summaryCreatedBy}
+          <span class="text-xs text-gray-500">Created by {summaryCreatedBy}</span>
+        {/if}
+      </div>
       <div class="p-3 bg-gray-100 rounded-lg text-sm text-gray-800 prose prose-sm max-w-none">
         {@html snarkdown(summary)}
       </div>

@@ -8,13 +8,29 @@ export const modelStore = storage.defineItem<string>("local:model", {
   fallback: "gemini-2.5-flash",
 })
 
-interface SavedSummary {
+interface SavedSummaryV1 {
   id: string
   summary: string
 }
 
-export const savedSummariesStore = storage.defineItem<SavedSummary[]>("local:savedSummaries", {
+export interface SavedSummaryV2 {
+  id: string
+  summary: string
+  createdBy: string
+}
+
+export const savedSummariesStore = storage.defineItem<SavedSummaryV2[]>("local:savedSummaries", {
   fallback: [],
+  version: 2,
+  migrations: {
+    // Migration from v1 to v2: add createdBy field with default value
+    2: (summaries: SavedSummaryV1[]): SavedSummaryV2[] => {
+      return summaries.map(summary => ({
+        ...summary,
+        createdBy: "unknown", // Default value for existing summaries
+      }))
+    },
+  },
 })
 
 export const systemPromptStore = storage.defineItem<string>("local:systemPrompt", {

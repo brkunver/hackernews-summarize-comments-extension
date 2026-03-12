@@ -1,5 +1,5 @@
 import { GenerateText } from "@@/util/generate-ai"
-import { savedSummariesStore } from "@@/util/storage"
+import { savedSummariesStore, modelStore } from "@@/util/storage"
 
 export default defineBackground(() => {
   console.log("Hello background!", { id: browser.runtime.id })
@@ -14,10 +14,20 @@ export default defineBackground(() => {
         const summaryText = await GenerateText(comments)
 
         if (summaryText && summaryText.trim() !== "") {
+          // Get current model to set as createdBy
+          const currentModel = await modelStore.getValue()
+
           // Save to cache
           const savedSummaries = await savedSummariesStore.getValue()
           const filteredSummaries = savedSummaries.filter(item => item.id !== url)
-          const updatedSummaries = [...filteredSummaries, { id: url, summary: summaryText }]
+          const updatedSummaries = [
+            ...filteredSummaries,
+            {
+              id: url,
+              summary: summaryText,
+              createdBy: currentModel,
+            },
+          ]
           await savedSummariesStore.setValue(updatedSummaries)
 
           // Notify popup that summary is ready

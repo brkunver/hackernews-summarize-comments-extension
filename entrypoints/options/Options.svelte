@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { apiKeyStore, modelStore, systemPromptStore, savedSummariesStore } from "~/util/storage"
+  import { apiKeyStore, modelStore, systemPromptStore, savedSummariesStore, type SavedSummaryV2 } from "~/util/storage"
   import { onMount } from "svelte"
 
   let apiKey = $state("")
@@ -8,7 +8,7 @@
   let isLoading = $state(false)
   let saveMessage = $state("")
   let isEditingPrompt = $state(false)
-  let cachedSummaries = $state<{ id: string; summary: string }[]>([])
+  let cachedSummaries = $state<SavedSummaryV2[]>([])
 
   const availableModels = [
     "gemini-2.5-flash",
@@ -222,6 +222,7 @@
                     {truncateUrl(summary.id)}
                   </a>
                   <div class="text-xs text-gray-400 truncate">{truncateSummary(summary.summary)}</div>
+                  <div class="text-xs text-gray-500">Created by: {summary.createdBy}</div>
                 </div>
                 <button
                   onclick={() => deleteCachedSummary(summary.id)}
