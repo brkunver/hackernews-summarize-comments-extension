@@ -10,7 +10,13 @@
   let isEditingPrompt = $state(false)
   let cachedSummaries = $state<{ id: string; summary: string }[]>([])
 
-  const availableModels = ["gemini-2.5-flash", "gemini-3.0-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"]
+  const availableModels = [
+    "gemini-2.5-flash",
+    "gemini-3-flash-preview",
+    "gemini-2.5-flash-lite",
+    "gemini-3.1-flash-lite-preview",
+    "gemma-3-27b-it",
+  ]
 
   // Load values from storage on component mount
   onMount(async () => {
@@ -99,7 +105,8 @@
           type="password"
           bind:value={apiKey}
           placeholder="Enter your Google AI API key"
-          class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg
+          focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
         <p class="mt-2 text-sm text-gray-400">Your API key is stored locally and never shared</p>
       </div>
@@ -110,7 +117,8 @@
         <select
           id="model"
           bind:value={selectedModel}
-          class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg
+          focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         >
           {#each availableModels as model}
             <option value={model}>{model}</option>
@@ -138,7 +146,8 @@
               id="systemPrompt"
               bind:value={systemPrompt}
               readonly
-              class="w-full h-64 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-300 resize-none focus:outline-none"
+              class="w-full h-64 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm
+              text-gray-300 resize-none focus:outline-none"
               placeholder="System prompt will appear here..."
             ></textarea>
             <div class="absolute top-2 right-2 px-2 py-1 bg-yellow-900 text-yellow-200 text-xs rounded">
@@ -152,7 +161,8 @@
           <textarea
             id="systemPrompt"
             bind:value={systemPrompt}
-            class="w-full h-64 px-4 py-2 bg-gray-800 border border-blue-500 rounded-lg text-sm text-white resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="w-full h-64 px-4 py-2 bg-gray-800 border border-blue-500 rounded-lg text-sm text-white
+            resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="Enter your custom system prompt..."
           ></textarea>
           <p class="mt-2 text-sm text-yellow-400">
@@ -166,7 +176,8 @@
         <button
           onclick={saveSettings}
           disabled={isLoading}
-          class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+          class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white font-semibold py-3 px-6
+          rounded-lg transition-colors"
         >
           {isLoading ? "Saving..." : "Save Settings"}
         </button>
