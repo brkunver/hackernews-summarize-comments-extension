@@ -5,7 +5,7 @@ export default defineContentScript({
   main() {
     console.log("HackerNews Summarize Comments loaded")
 
-    browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (message.action === "getComments") {
         try {
           const comments = getHNCommentsForLLM()
