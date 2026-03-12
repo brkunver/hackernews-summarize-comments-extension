@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { savedSummariesStore } from "~/util/storage"
+  import { savedSummariesStore, modelStore } from "~/util/storage"
   import { onMount } from "svelte"
   import snarkdown from "snarkdown"
 
@@ -11,6 +11,7 @@
   let isGeneratingSummary = $state(false)
   let currentUrl = $state("")
   let isProcessingInBackground = $state(false)
+  let currentModelName = $state("")
 
   // Load cached summary on component mount and listen for background messages
   onMount(async () => {
@@ -89,6 +90,7 @@
 
         isProcessingInBackground = true
         isGeneratingSummary = true
+        currentModelName = await modelStore.getValue()
 
         const backgroundResponse = await browser.runtime.sendMessage({
           action: "generateSummary",
@@ -149,13 +151,14 @@
   <!-- Loading States -->
   {#if isProcessingInBackground}
     <div class="mb-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded-lg">
-      <p class="text-sm">Processing in background... You can close this window.</p>
+      <p class="text-sm font-medium">Generating using {currentModelName || "AI"}...</p>
+      <p class="text-xs mt-1 opacity-80">Processing in background. You can close this window.</p>
     </div>
   {/if}
 
   {#if isGeneratingSummary && !isProcessingInBackground}
     <div class="mb-4 p-3 bg-blue-100 border border-blue-400 text-blue-700 rounded-lg">
-      <p class="text-sm">Generating summary with AI...</p>
+      <p class="text-sm font-medium">Generating summary using {currentModelName || "AI"}...</p>
     </div>
   {/if}
 
