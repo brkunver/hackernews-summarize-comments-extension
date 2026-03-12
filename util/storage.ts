@@ -1,7 +1,14 @@
 import { storage } from "#imports"
 
-export const apiKeyStore = storage.defineItem<string>("local:apiKey", {
+export const apiKeyStore = storage.defineItem<string>("sync:apiKey", {
   fallback: "",
+  version: 2,
+  migrations: {
+    // Migration from v1 (local) to v2 (sync): move API key to sync storage
+    2: (localValue: string): string => {
+      return localValue
+    },
+  },
 })
 
 export const modelStore = storage.defineItem<string>("local:model", {
@@ -43,7 +50,7 @@ export const ongoingGenerationStore = storage.defineItem<OngoingGeneration | nul
   fallback: null,
 })
 
-export const systemPromptStore = storage.defineItem<string>("local:systemPrompt", {
+export const systemPromptStore = storage.defineItem<string>("sync:systemPrompt", {
   fallback: `You are an assistant that summarizes Hacker News comment threads.
 
 Your task:
@@ -69,4 +76,11 @@ Style:
 - No emojis.
 - No filler.
   `,
+  version: 2,
+  migrations: {
+    // Migration from v1 (local) to v2 (sync): move system prompt to sync storage
+    2: (localValue: string): string => {
+      return localValue
+    },
+  },
 })
