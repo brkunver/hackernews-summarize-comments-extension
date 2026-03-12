@@ -1,11 +1,5 @@
 <script lang="ts">
-  import {
-    savedSummariesStore,
-    modelStore,
-    ongoingGenerationStore,
-    type SavedSummaryV2,
-    type OngoingGeneration,
-  } from "~/util/storage"
+  import { savedSummariesStore, modelStore, ongoingGenerationStore } from "~/util/storage"
   import { onMount } from "svelte"
   import snarkdown from "snarkdown"
 
@@ -19,6 +13,11 @@
   let isProcessingInBackground = $state(false)
   let currentModelName = $state("")
   let summaryCreatedBy = $state("")
+  let isValidHackerNewsUrl = $state(false)
+
+  function checkIfHackerNewsUrl(url: string): boolean {
+    return url.includes("news.ycombinator.com/item?id=")
+  }
 
   // Load cached summary on component mount and listen for background messages
   onMount(async () => {
@@ -26,8 +25,12 @@
       const [tab] = await browser.tabs.query({ active: true, currentWindow: true })
       if (tab.url) {
         currentUrl = tab.url
-        await loadCachedSummary(tab.url)
-        await checkOngoingGeneration()
+        currentModelName = await modelStore.getValue()
+        isValidHackerNewsUrl = checkIfHackerNewsUrl(tab.url)
+        if (isValidHackerNewsUrl) {
+          await loadCachedSummary(tab.url)
+          await checkOngoingGeneration()
+        }
         updateButtonText()
       }
     } catch (err) {
@@ -62,7 +65,9 @@
   }
 
   function updateButtonText() {
-    if (summary?.trim()) {
+    if (!isValidHackerNewsUrl) {
+      buttonText = "Not a Hacker News Page"
+    } else if (summary?.trim()) {
       buttonText = "Regenerate Summary"
     } else {
       buttonText = "Generate Summary"
@@ -148,11 +153,29 @@
 <main class="p-4 min-w-[350px] max-w-[500px]">
   <h1 class="text-2xl font-bold mb-4">HN Comments Summarizer</h1>
 
+  <!-- Current Model Info -->
+  <div class="mb-4 p-2 bg-gray-50 border border-gray-200 rounded-lg">
+    <p class="text-xs text-gray-600">
+      Current model: <span class="font-medium text-gray-800">{currentModelName || "Loading..."}</span>
+    </p>
+  </div>
+
+  <!-- URL Validation Warning -->
+  {#if !isValidHackerNewsUrl && currentUrl}
+    <div class="mb-4 p-3 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded-lg">
+      <p class="font-semibold text-sm">⚠️ Not a Hacker News Submission</p>
+      <p class="text-xs mt-1">
+        This extension only works on Hacker News submission pages (news.ycombinator.com/item?id=)
+      </p>
+    </div>
+  {/if}
+
   <div class="space-y-3 mb-4">
     <button
       onclick={getComments}
-      disabled={isLoading || isGeneratingSummary || isProcessingInBackground}
-      class="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white font-semibold py-2 px-4 rounded transition-colors"
+      disabled={isLoading || isGeneratingSummary || isProcessingInBackground || !isValidHackerNewsUrl}
+      class="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300
+      text-white font-semibold py-2 px-4 rounded transition-colors"
     >
       {buttonText}
     </button>
