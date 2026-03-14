@@ -12,7 +12,13 @@ export const apiKeyStore = storage.defineItem<string>("sync:apiKey", {
 })
 
 export const modelStore = storage.defineItem<string>("local:model", {
-  fallback: "gemini-2.5-flash",
+  fallback: "gemini-3.1-flash-lite-preview",
+  version: 1,
+})
+
+export const maxCommentsStore = storage.defineItem<number>("local:maxComments", {
+  fallback: 100,
+  version: 1,
 })
 
 interface SavedSummaryV1 {
@@ -48,6 +54,7 @@ export interface OngoingGeneration {
 
 export const ongoingGenerationStore = storage.defineItem<OngoingGeneration | null>("local:ongoingGeneration", {
   fallback: null,
+  version: 1,
 })
 
 export const systemPromptStore = storage.defineItem<string>("sync:systemPrompt", {
