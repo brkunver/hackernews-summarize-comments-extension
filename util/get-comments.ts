@@ -1,8 +1,17 @@
-export function getHNCommentsForLLM(): string {
+import { maxCommentsStore } from "./storage"
+
+export async function getHNCommentsForLLM(): Promise<string> {
   const commentRows = document.querySelectorAll(".comtr")
   let combinedString = "Comments :\n\n"
 
-  commentRows.forEach(row => {
+  // Get max comments from storage
+  const maxComments = await maxCommentsStore.getValue()
+
+  // Determine if there's a limit (0 or -1 means no limit)
+  const hasLimit = maxComments > 0
+  const limitedCommentRows = hasLimit ? Array.from(commentRows).slice(0, maxComments) : Array.from(commentRows)
+
+  limitedCommentRows.forEach(row => {
     const authorEl = row.querySelector(".hnuser") as HTMLElement | null
     const textEl = row.querySelector(".commtext") as HTMLElement | null
     const indentEl = row.querySelector(".ind") as HTMLElement | null
@@ -17,6 +26,11 @@ export function getHNCommentsForLLM(): string {
       combinedString += `${indentPrefix}[${author}]: ${text}\n\n`
     }
   })
+
+  // Add note if comments were truncated
+  if (hasLimit && commentRows.length > maxComments) {
+    combinedString += `\n\n[Note: Showing first ${maxComments} comments out of ${commentRows.length} total comments for processing]`
+  }
 
   return combinedString
 }
