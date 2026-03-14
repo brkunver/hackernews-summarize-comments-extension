@@ -7,13 +7,14 @@ export default defineContentScript({
 
     browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (message.action === "getComments") {
-        try {
-          const comments = getHNCommentsForLLM()
-          sendResponse({ success: true, comments })
-        } catch (error) {
-          sendResponse({ success: false, error: error instanceof Error ? error.message : String(error) })
-        }
-        return true
+        getHNCommentsForLLM()
+          .then(comments => {
+            sendResponse({ success: true, comments })
+          })
+          .catch(error => {
+            sendResponse({ success: false, error: error instanceof Error ? error.message : String(error) })
+          })
+        return true // Keep the message channel open for async response
       }
       return true // Keep the message channel open for async response
     })
