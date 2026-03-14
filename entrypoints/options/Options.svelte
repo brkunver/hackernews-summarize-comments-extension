@@ -1,10 +1,18 @@
 <script lang="ts">
-  import { apiKeyStore, modelStore, systemPromptStore, savedSummariesStore, type SavedSummaryV2 } from "~/util/storage"
+  import {
+    apiKeyStore,
+    modelStore,
+    systemPromptStore,
+    savedSummariesStore,
+    maxCommentsStore,
+    type SavedSummaryV2,
+  } from "~/util/storage"
   import { onMount } from "svelte"
 
   let apiKey = $state("")
   let selectedModel = $state("gemini-2.5-flash")
   let systemPrompt = $state("")
+  let maxComments = $state(1000)
   let isLoading = $state(false)
   let saveMessage = $state("")
   let isEditingPrompt = $state(false)
@@ -24,6 +32,7 @@
       apiKey = await apiKeyStore.getValue()
       selectedModel = await modelStore.getValue()
       systemPrompt = await systemPromptStore.getValue()
+      maxComments = await maxCommentsStore.getValue()
       cachedSummaries = await savedSummariesStore.getValue()
     } catch (error) {
       console.error("Error loading settings:", error)
@@ -39,6 +48,7 @@
       await apiKeyStore.setValue(apiKey)
       await modelStore.setValue(selectedModel)
       await systemPromptStore.setValue(systemPrompt)
+      await maxCommentsStore.setValue(maxComments)
       saveMessage = "Settings saved successfully!"
 
       // Clear message after 3 seconds
@@ -125,6 +135,22 @@
           {/each}
         </select>
         <p class="mt-2 text-sm text-gray-400">Choose the AI model for comment summarization</p>
+      </div>
+
+      <!-- Max Comments -->
+      <div>
+        <label for="maxComments" class="block text-sm font-medium mb-2"> Max Comments </label>
+        <input
+          id="maxComments"
+          type="number"
+          bind:value={maxComments}
+          min="-1"
+          class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg
+          focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+        <p class="mt-2 text-sm text-gray-400">
+          Maximum number of comments to process. Enter 0 or -1 for no limit. Default: 1000
+        </p>
       </div>
 
       <!-- System Prompt -->
