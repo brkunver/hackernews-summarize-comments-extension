@@ -12,7 +12,7 @@
   let apiKey = $state("")
   let selectedModel = $state("gemini-2.5-flash")
   let systemPrompt = $state("")
-  let maxComments = $state(1000)
+  let maxComments = $state(100)
   let isLoading = $state(false)
   let saveMessage = $state("")
   let isEditingPrompt = $state(false)
