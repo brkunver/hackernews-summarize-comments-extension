@@ -9,32 +9,32 @@ importers:
   .:
     dependencies:
       '@ai-sdk/google':
-        specifier: ^3.0.34
+        specifier: ^3.0.67
         version: 3.0.67(zod@4.4.1)
       ai:
-        specifier: ^6.0.105
+        specifier: ^6.0.173
         version: 6.0.173(zod@4.4.1)
       snarkdown:
         specifier: ^2.0.0
         version: 2.0.0
     devDependencies:
       '@tailwindcss/vite':
-        specifier: ^4.1.18
+        specifier: ^4.2.4
         version: 4.2.4(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1))
       '@tsconfig/svelte':
         specifier: ^5.0.8
         version: 5.0.8
       '@wxt-dev/module-svelte':
-        specifier: ^2.0.4
+        specifier: ^2.0.5
         version: 2.0.5(svelte@5.55.5)(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1))(wxt@0.20.25(@types/node@25.6.0)(jiti@2.6.1))
       svelte:
-        specifier: ^5.51.3
+        specifier: ^5.55.5
         version: 5.55.5
       svelte-check:
-        specifier: ^4.4.0
+        specifier: ^4.4.7
         version: 4.4.7(picomatch@4.0.4)(svelte@5.55.5)(typescript@5.9.3)
       tailwindcss:
-        specifier: ^4.1.18
+        specifier: ^4.2.4
         version: 4.2.4
       tslib:
         specifier: ^2.8.1
@@ -43,7 +43,7 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
       wxt:
-        specifier: ^0.20.17
+        specifier: ^0.20.25
         version: 0.20.25(@types/node@25.6.0)(jiti@2.6.1)
 
 packages:
