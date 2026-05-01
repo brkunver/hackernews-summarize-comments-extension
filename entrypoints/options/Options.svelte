@@ -19,11 +19,13 @@
   let cachedSummaries = $state<SavedSummaryV2[]>([])
 
   const availableModels = [
-    "gemini-2.5-flash",
     "gemini-3-flash-preview",
-    "gemini-2.5-flash-lite",
     "gemini-3.1-flash-lite-preview",
+    "gemini-3.1-flash-lite",
+    "gemini-2.5-flash",
     "gemma-3-27b-it",
+    "gemini-3.0-flash",
+    "gemini-2.5-flash-lite",
   ]
 
   // Load values from storage on component mount
