@@ -9,13 +9,13 @@
     "dev:firefox": "wxt -b firefox",
     "build": "wxt build",
     "build:firefox": "wxt build -b firefox",
-    "resize": "bunx @kunver/resize@latest",
+    "resize": "pnpm dlx @kunver/resize@latest",
     "zip": "wxt zip",
-    "zip:all": "bun --parallel zip zip:firefox",
+    "zip:all": "pnpm run zip && pnpm run zip:firefox",
     "zip:firefox": "wxt zip -b firefox",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "postinstall": "wxt prepare",
-    "manager": "bun manager.cjs bun"
+    "manager": "node manager.cjs pnpm"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.18",
@@ -28,11 +28,9 @@
     "typescript": "^5.9.3",
     "wxt": "^0.20.17"
   },
-  "trustedDependencies": [
-    "@tailwindcss/oxide",
-    "esbuild",
-    "spawn-sync"
-  ],
+  "engines": {
+    "pnpm": ">=10.10.0"
+  },
   "dependencies": {
     "@ai-sdk/google": "^3.0.34",
     "ai": "^6.0.105",
