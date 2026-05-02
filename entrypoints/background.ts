@@ -19,9 +19,9 @@ export default defineBackground(() => {
         })
 
         // Generate summary in background
-        const summaryText = await GenerateText(comments)
+        const summary = await GenerateText(comments)
 
-        if (summaryText && summaryText.trim() !== "") {
+        if (summary.text.trim() !== "") {
           // Save to cache
           const savedSummaries = await savedSummariesStore.getValue()
           const filteredSummaries = savedSummaries.filter(item => item.id !== url)
@@ -29,8 +29,8 @@ export default defineBackground(() => {
             ...filteredSummaries,
             {
               id: url,
-              summary: summaryText,
-              createdBy: currentModel,
+              summary: summary.text,
+              createdBy: summary.model,
             },
           ]
           await savedSummariesStore.setValue(updatedSummaries)
@@ -42,10 +42,12 @@ export default defineBackground(() => {
           browser.runtime.sendMessage({
             action: "summaryComplete",
             url,
-            summary: summaryText,
+            summary: summary.text,
+            model: summary.model,
+            attemptedModels: summary.attemptedModels,
           })
 
-          sendResponse({ success: true, summary: summaryText })
+          sendResponse({ success: true, summary: summary.text, model: summary.model })
         } else {
           // Clear ongoing generation on error
           await ongoingGenerationStore.setValue(null)
