@@ -1,4 +1,4 @@
-export type AiProvider = "google" | "groq"
+export type AiProvider = "google" | "groq" | "cerebras"
 
 export const GOOGLE_AI_MODEL_FALLBACKS = [
   "gemini-3.1-flash-lite-preview",
@@ -8,7 +8,13 @@ export const GOOGLE_AI_MODEL_FALLBACKS = [
 
 export const GROQ_AI_MODEL_FALLBACKS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"] as const
 
-export const AI_MODEL_FALLBACKS = [...GOOGLE_AI_MODEL_FALLBACKS, ...GROQ_AI_MODEL_FALLBACKS] as const
+export const CEREBRAS_AI_MODEL_FALLBACKS = ["zai-glm-4.7", "gpt-oss-120b", "qwen-3-235b-a22b-instruct-2507"] as const
+
+export const AI_MODEL_FALLBACKS = [
+  ...GOOGLE_AI_MODEL_FALLBACKS,
+  ...GROQ_AI_MODEL_FALLBACKS,
+  ...CEREBRAS_AI_MODEL_FALLBACKS,
+] as const
 
 export const AVAILABLE_AI_MODELS = [
   ...GOOGLE_AI_MODEL_FALLBACKS,
@@ -17,6 +23,7 @@ export const AVAILABLE_AI_MODELS = [
   "gemini-2.5-flash-lite",
   "gemma-3-27b-it",
   ...GROQ_AI_MODEL_FALLBACKS,
+  ...CEREBRAS_AI_MODEL_FALLBACKS,
 ] as const
 
 export type AiModel = (typeof AVAILABLE_AI_MODELS)[number]
@@ -29,11 +36,13 @@ const MODEL_PROVIDERS: Record<string, AiProvider> = {
     ]),
   ),
   ...Object.fromEntries(GROQ_AI_MODEL_FALLBACKS.map(model => [model, "groq"])),
+  ...Object.fromEntries(CEREBRAS_AI_MODEL_FALLBACKS.map(model => [model, "cerebras"])),
 }
 
 const PROVIDER_FALLBACKS = {
   google: GOOGLE_AI_MODEL_FALLBACKS,
   groq: GROQ_AI_MODEL_FALLBACKS,
+  cerebras: CEREBRAS_AI_MODEL_FALLBACKS,
 } satisfies Record<AiProvider, readonly string[]>
 
 export function getModelProvider(model: string): AiProvider | null {

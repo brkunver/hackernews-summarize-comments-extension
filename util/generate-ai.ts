@@ -1,6 +1,7 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { createGroq } from "@ai-sdk/groq"
-import { apiKeyStore, groqApiKeyStore, modelStore, systemPromptStore } from "./storage"
+import { createCerebras } from "@ai-sdk/cerebras"
+import { apiKeyStore, cerebrasApiKeyStore, groqApiKeyStore, modelStore, systemPromptStore } from "./storage"
 import { generateText } from "ai"
 import { type AiProvider, getModelFallbackChain, getModelProvider } from "./models"
 
@@ -8,6 +9,8 @@ let googleGenerativeAI: ReturnType<typeof createGoogleGenerativeAI> | null = nul
 let googleGenerativeAIApiKey: string | null = null
 let groqAI: ReturnType<typeof createGroq> | null = null
 let groqAIApiKey: string | null = null
+let cerebrasAI: ReturnType<typeof createCerebras> | null = null
+let cerebrasAIApiKey: string | null = null
 
 function getGoogleGenerativeAI(apiKey: string) {
   if (!googleGenerativeAI || googleGenerativeAIApiKey !== apiKey) {
@@ -31,6 +34,17 @@ function getGroqAI(apiKey: string) {
   return groqAI
 }
 
+function getCerebrasAI(apiKey: string) {
+  if (!cerebrasAI || cerebrasAIApiKey !== apiKey) {
+    cerebrasAI = createCerebras({
+      apiKey,
+    })
+    cerebrasAIApiKey = apiKey
+  }
+
+  return cerebrasAI
+}
+
 function getAvailableProviders(apiKeys: Record<AiProvider, string>): AiProvider[] {
   return (Object.entries(apiKeys) as [AiProvider, string][])
     .filter(([, apiKey]) => apiKey.trim() !== "")
@@ -49,13 +63,14 @@ export async function GenerateText(prompt: string) {
   const apiKeys = {
     google: await apiKeyStore.getValue(),
     groq: await groqApiKeyStore.getValue(),
+    cerebras: await cerebrasApiKeyStore.getValue(),
   } satisfies Record<AiProvider, string>
   const availableProviders = getAvailableProviders(apiKeys)
   const attemptedModels = getModelFallbackChain(preferredModel, availableProviders)
   const errors: unknown[] = []
 
   if (attemptedModels.length === 0) {
-    throw new Error("No AI provider API key configured. Add a Google AI or Groq API key in options.")
+    throw new Error("No AI provider API key configured. Add a Google AI, Groq, or Cerebras API key in options.")
   }
 
   for (const model of attemptedModels) {
@@ -66,7 +81,12 @@ export async function GenerateText(prompt: string) {
         throw new Error(`Unknown AI model provider for model: ${model}`)
       }
 
-      const ai = provider === "google" ? getGoogleGenerativeAI(apiKeys.google) : getGroqAI(apiKeys.groq)
+      const ai =
+        provider === "google"
+          ? getGoogleGenerativeAI(apiKeys.google)
+          : provider === "groq"
+            ? getGroqAI(apiKeys.groq)
+            : getCerebrasAI(apiKeys.cerebras)
 
       const { text } = await generateText({
         model: ai(model),

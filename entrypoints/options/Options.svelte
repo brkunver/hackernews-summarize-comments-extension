@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     apiKeyStore,
+    cerebrasApiKeyStore,
     groqApiKeyStore,
     modelStore,
     systemPromptStore,
@@ -13,6 +14,7 @@
 
   let apiKey = $state("")
   let groqApiKey = $state("")
+  let cerebrasApiKey = $state("")
   let selectedModel = $state("gemini-2.5-flash")
   let systemPrompt = $state("")
   let maxComments = $state(100)
@@ -28,6 +30,7 @@
     try {
       apiKey = await apiKeyStore.getValue()
       groqApiKey = await groqApiKeyStore.getValue()
+      cerebrasApiKey = await cerebrasApiKeyStore.getValue()
       selectedModel = await modelStore.getValue()
       systemPrompt = await systemPromptStore.getValue()
       maxComments = await maxCommentsStore.getValue()
@@ -48,6 +51,7 @@
 
       await apiKeyStore.setValue(apiKey)
       await groqApiKeyStore.setValue(groqApiKey)
+      await cerebrasApiKeyStore.setValue(cerebrasApiKey)
       await systemPromptStore.setValue(systemPrompt)
       await maxCommentsStore.setValue(maxComments)
 
@@ -120,12 +124,16 @@
       return groqApiKey.trim() !== ""
     }
 
+    if (provider === "cerebras") {
+      return cerebrasApiKey.trim() !== ""
+    }
+
     return false
   }
 
   function getModelLabel(model: string): string {
     const provider = getModelProvider(model)
-    const providerLabel = provider === "groq" ? "Groq" : "Google"
+    const providerLabel = provider === "groq" ? "Groq" : provider === "cerebras" ? "Cerebras" : "Google"
     return `${providerLabel} - ${model}`
   }
 </script>
@@ -161,6 +169,20 @@
           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
         <p class="mt-2 text-sm text-gray-400">Groq models are enabled when this key is set</p>
+      </div>
+
+      <!-- Cerebras API Key Input -->
+      <div>
+        <label for="cerebrasApiKey" class="block text-sm font-medium mb-2"> Cerebras API Key </label>
+        <input
+          id="cerebrasApiKey"
+          type="password"
+          bind:value={cerebrasApiKey}
+          placeholder="Enter your Cerebras API key"
+          class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg
+          focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+        <p class="mt-2 text-sm text-gray-400">Cerebras models are enabled when this key is set</p>
       </div>
 
       <!-- Model Selection -->

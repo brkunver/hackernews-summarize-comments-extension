@@ -17,6 +17,11 @@ export const groqApiKeyStore = storage.defineItem<string>("sync:groqApiKey", {
   version: 1,
 })
 
+export const cerebrasApiKeyStore = storage.defineItem<string>("sync:cerebrasApiKey", {
+  fallback: "",
+  version: 1,
+})
+
 export const modelStore = storage.defineItem<string>("local:model", {
   fallback: GOOGLE_AI_MODEL_FALLBACKS[0],
   version: 1,
