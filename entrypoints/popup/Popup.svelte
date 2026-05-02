@@ -40,7 +40,8 @@
     browser.runtime.onMessage.addListener(message => {
       if (message.action === "summaryComplete" && message.url === currentUrl) {
         summary = message.summary
-        summaryCreatedBy = currentModelName
+        summaryCreatedBy = message.model || currentModelName
+        currentModelName = message.model || currentModelName
         isProcessingInBackground = false
         isGeneratingSummary = false
         updateButtonText()
@@ -127,6 +128,13 @@
           comments: contentResponse.comments,
           url: tab.url,
         })
+
+        if (!backgroundResponse?.success) {
+          error = backgroundResponse?.error || "Failed to generate summary"
+          isProcessingInBackground = false
+          isGeneratingSummary = false
+          return
+        }
 
         // Background script handles response via message listener, so we don't need to check here
         // The summary will be updated through the 'summaryComplete' message
