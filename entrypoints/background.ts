@@ -31,6 +31,7 @@ export default defineBackground(() => {
               id: url,
               summary: summary.text,
               createdBy: summary.model,
+              provider: summary.provider,
             },
           ]
           await savedSummariesStore.setValue(updatedSummaries)
@@ -44,10 +45,11 @@ export default defineBackground(() => {
             url,
             summary: summary.text,
             model: summary.model,
+            provider: summary.provider,
             attemptedModels: summary.attemptedModels,
           })
 
-          sendResponse({ success: true, summary: summary.text, model: summary.model })
+          sendResponse({ success: true, summary: summary.text, model: summary.model, provider: summary.provider })
         } else {
           // Clear ongoing generation on error
           await ongoingGenerationStore.setValue(null)

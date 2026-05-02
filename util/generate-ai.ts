@@ -54,6 +54,7 @@ function getAvailableProviders(apiKeys: Record<AiProvider, string>): AiProvider[
 export interface GenerateTextResult {
   text: string
   model: string
+  provider: AiProvider
   attemptedModels: string[]
 }
 
@@ -101,6 +102,7 @@ export async function GenerateText(prompt: string) {
       return {
         text,
         model,
+        provider,
         attemptedModels,
       } satisfies GenerateTextResult
     } catch (error) {

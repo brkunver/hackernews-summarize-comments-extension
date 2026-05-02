@@ -41,6 +41,7 @@ export interface SavedSummaryV2 {
   id: string
   summary: string
   createdBy: string
+  provider?: string
 }
 
 export const savedSummariesStore = storage.defineItem<SavedSummaryV2[]>("local:savedSummaries", {

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { savedSummariesStore, modelStore, ongoingGenerationStore } from "~/util/storage"
+  import { formatModelWithProvider, getModelProvider, type AiProvider } from "~/util/models"
   import { onMount } from "svelte"
   import snarkdown from "snarkdown"
 
@@ -12,7 +13,9 @@
   let currentUrl = $state("")
   let isProcessingInBackground = $state(false)
   let currentModelName = $state("")
+  let currentModelProvider = $state<AiProvider | null>(null)
   let summaryCreatedBy = $state("")
+  let summaryCreatedByProvider = $state<AiProvider | null>(null)
   let isValidHackerNewsUrl = $state(false)
 
   function checkIfHackerNewsUrl(url: string): boolean {
@@ -26,6 +29,7 @@
       if (tab.url) {
         currentUrl = tab.url
         currentModelName = await modelStore.getValue()
+        currentModelProvider = getModelProvider(currentModelName)
         isValidHackerNewsUrl = checkIfHackerNewsUrl(tab.url)
         if (isValidHackerNewsUrl) {
           await loadCachedSummary(tab.url)
@@ -41,7 +45,9 @@
       if (message.action === "summaryComplete" && message.url === currentUrl) {
         summary = message.summary
         summaryCreatedBy = message.model || currentModelName
+        summaryCreatedByProvider = message.provider || getModelProvider(summaryCreatedBy)
         currentModelName = message.model || currentModelName
+        currentModelProvider = message.provider || getModelProvider(currentModelName)
         isProcessingInBackground = false
         isGeneratingSummary = false
         updateButtonText()
@@ -58,6 +64,8 @@
       if (cachedSummary?.summary?.trim()) {
         summary = cachedSummary.summary
         summaryCreatedBy = cachedSummary.createdBy
+        summaryCreatedByProvider =
+          (cachedSummary.provider as AiProvider | undefined) || getModelProvider(cachedSummary.createdBy)
         console.log("Loaded cached summary for:", url)
       }
     } catch (err) {
@@ -83,6 +91,7 @@
         isProcessingInBackground = true
         isGeneratingSummary = true
         currentModelName = ongoing.model
+        currentModelProvider = getModelProvider(ongoing.model)
         updateButtonText()
       }
     } catch (err) {
@@ -122,6 +131,7 @@
         isProcessingInBackground = true
         isGeneratingSummary = true
         currentModelName = await modelStore.getValue()
+        currentModelProvider = getModelProvider(currentModelName)
 
         const backgroundResponse = await browser.runtime.sendMessage({
           action: "generateSummary",
@@ -156,6 +166,14 @@
   function openOptions() {
     browser.runtime.openOptionsPage()
   }
+
+  function getCurrentModelLabel(): string {
+    return currentModelName ? formatModelWithProvider(currentModelName, currentModelProvider) : "Loading..."
+  }
+
+  function getSummaryCreatedByLabel(): string {
+    return summaryCreatedBy ? formatModelWithProvider(summaryCreatedBy, summaryCreatedByProvider) : ""
+  }
 </script>
 
 <main class="p-4 min-w-[350px] max-w-[500px]">
@@ -164,7 +182,7 @@
   <!-- Current Model Info -->
   <div class="mb-4 p-2 bg-gray-50 border border-gray-200 rounded-lg">
     <p class="text-xs text-gray-600">
-      Current model: <span class="font-medium text-gray-800">{currentModelName || "Loading..."}</span>
+      Current model: <span class="font-medium text-gray-800">{getCurrentModelLabel()}</span>
     </p>
   </div>
 
@@ -207,14 +225,14 @@
   <!-- Loading States -->
   {#if isProcessingInBackground}
     <div class="mb-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded-lg">
-      <p class="text-sm font-medium">Generating using {currentModelName || "AI"}...</p>
+      <p class="text-sm font-medium">Generating using {currentModelName ? getCurrentModelLabel() : "AI"}...</p>
       <p class="text-xs mt-1 opacity-80">Processing in background. You can close this window.</p>
     </div>
   {/if}
 
   {#if isGeneratingSummary && !isProcessingInBackground}
     <div class="mb-4 p-3 bg-blue-100 border border-blue-400 text-blue-700 rounded-lg">
-      <p class="text-sm font-medium">Generating summary using {currentModelName || "AI"}...</p>
+      <p class="text-sm font-medium">Generating summary using {currentModelName ? getCurrentModelLabel() : "AI"}...</p>
     </div>
   {/if}
 
@@ -224,7 +242,7 @@
       <div class="flex items-center justify-between mb-2">
         <h2 class="text-lg font-semibold">Summary</h2>
         {#if summaryCreatedBy}
-          <span class="text-xs text-gray-500">Created by {summaryCreatedBy}</span>
+          <span class="text-xs text-gray-500">Created by {getSummaryCreatedByLabel()}</span>
         {/if}
       </div>
       <div class="p-3 bg-gray-100 rounded-lg text-sm text-gray-800 prose prose-sm max-w-none">

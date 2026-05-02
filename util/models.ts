@@ -49,6 +49,22 @@ export function getModelProvider(model: string): AiProvider | null {
   return MODEL_PROVIDERS[model] ?? null
 }
 
+export function getProviderLabel(provider: AiProvider | null): string {
+  if (provider === "groq") {
+    return "Groq"
+  }
+
+  if (provider === "cerebras") {
+    return "Cerebras"
+  }
+
+  return "Google"
+}
+
+export function formatModelWithProvider(model: string, provider: AiProvider | null = getModelProvider(model)): string {
+  return `${getProviderLabel(provider)} - ${model}`
+}
+
 export function getModelsForAvailableProviders(availableProviders: AiProvider[]): string[] {
   const providers = new Set(availableProviders)
   return AVAILABLE_AI_MODELS.filter(model => {
