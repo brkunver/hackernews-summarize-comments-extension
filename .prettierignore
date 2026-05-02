@@ -1,0 +1,7 @@
+node_modules
+.output
+.wxt
+comments.html
+pnpm-lock.yaml
+manager.cjs
+entrypoints/*/index.html

@@ -5,7 +5,9 @@
   "printWidth": 120,
   "tabWidth": 2,
   "useTabs": false,
+  "endOfLine": "auto",
   "jsxSingleQuote": false,
-  "jsxBracketSameLine": false,
-  "arrowParens": "avoid"
+  "bracketSameLine": false,
+  "arrowParens": "avoid",
+  "plugins": ["prettier-plugin-svelte"]
 }

@@ -13,6 +13,8 @@
     "zip": "wxt zip",
     "zip:all": "pnpm run zip && pnpm run zip:firefox",
     "zip:firefox": "wxt zip -b firefox",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "postinstall": "wxt prepare",
     "manager": "node manager.cjs pnpm"
@@ -21,6 +23,8 @@
     "@tailwindcss/vite": "^4.2.4",
     "@tsconfig/svelte": "^5.0.8",
     "@wxt-dev/module-svelte": "^2.0.5",
+    "prettier": "^3.8.3",
+    "prettier-plugin-svelte": "^3.5.1",
     "svelte": "^5.55.5",
     "svelte-check": "^4.4.7",
     "tailwindcss": "^4.2.4",
