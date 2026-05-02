@@ -27,7 +27,7 @@ Your extension's manifest.json will be output to .output/{target}/manifest.json 
 - this project uses typescript for development.
 - this project uses prettier for code formatting.
 - this project uses vite.
-- this project uses bun package manager, not npm.
+- this project uses pnpm package manager, not npm.
 - when using svelte, use modern latest svelte 5 runes syntax.
 - I should have a .prettierrc.json file in the root directory. please also follow rules on that.
 
@@ -47,13 +47,12 @@ const showChangelogOnUpdate = storage.defineItem<boolean>("local:showChangelogOn
 })
 
 // usage
-await showChangelogOnUpdate.getValue();
-await showChangelogOnUpdate.setValue(false);
-await showChangelogOnUpdate.removeValue();
-const unwatch = showChangelogOnUpdate.watch((newValue) => {
+await showChangelogOnUpdate.getValue()
+await showChangelogOnUpdate.setValue(false)
+await showChangelogOnUpdate.removeValue()
+const unwatch = showChangelogOnUpdate.watch(newValue => {
   // ...
-});
-
+})
 ```
 
 ## i18n usage
