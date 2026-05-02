@@ -1,5 +1,5 @@
 import { storage } from "#imports"
-import { AI_MODEL_FALLBACKS } from "./models"
+import { GOOGLE_AI_MODEL_FALLBACKS } from "./models"
 
 export const apiKeyStore = storage.defineItem<string>("sync:apiKey", {
   fallback: "",
@@ -12,8 +12,13 @@ export const apiKeyStore = storage.defineItem<string>("sync:apiKey", {
   },
 })
 
+export const groqApiKeyStore = storage.defineItem<string>("sync:groqApiKey", {
+  fallback: "",
+  version: 1,
+})
+
 export const modelStore = storage.defineItem<string>("local:model", {
-  fallback: AI_MODEL_FALLBACKS[0],
+  fallback: GOOGLE_AI_MODEL_FALLBACKS[0],
   version: 1,
 })
 

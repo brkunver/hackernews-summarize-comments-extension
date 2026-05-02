@@ -1,16 +1,18 @@
 <script lang="ts">
   import {
     apiKeyStore,
+    groqApiKeyStore,
     modelStore,
     systemPromptStore,
     savedSummariesStore,
     maxCommentsStore,
     type SavedSummaryV2,
   } from "~/util/storage"
-  import { AVAILABLE_AI_MODELS } from "~/util/models"
+  import { AVAILABLE_AI_MODELS, getModelProvider } from "~/util/models"
   import { onMount } from "svelte"
 
   let apiKey = $state("")
+  let groqApiKey = $state("")
   let selectedModel = $state("gemini-2.5-flash")
   let systemPrompt = $state("")
   let maxComments = $state(100)
@@ -25,6 +27,7 @@
   onMount(async () => {
     try {
       apiKey = await apiKeyStore.getValue()
+      groqApiKey = await groqApiKeyStore.getValue()
       selectedModel = await modelStore.getValue()
       systemPrompt = await systemPromptStore.getValue()
       maxComments = await maxCommentsStore.getValue()
@@ -40,11 +43,21 @@
     saveMessage = ""
 
     try {
+      const selectableModels = availableModels.filter(isModelSelectable)
+      const modelToSave = isModelSelectable(selectedModel) ? selectedModel : selectableModels[0]
+
       await apiKeyStore.setValue(apiKey)
-      await modelStore.setValue(selectedModel)
+      await groqApiKeyStore.setValue(groqApiKey)
       await systemPromptStore.setValue(systemPrompt)
       await maxCommentsStore.setValue(maxComments)
-      saveMessage = "Settings saved successfully!"
+
+      if (modelToSave) {
+        selectedModel = modelToSave
+        await modelStore.setValue(selectedModel)
+        saveMessage = "Settings saved successfully!"
+      } else {
+        saveMessage = "Settings saved. Add an API key to enable model selection."
+      }
 
       // Clear message after 3 seconds
       setTimeout(() => {
@@ -95,6 +108,26 @@
   function truncateSummary(summary: string, maxLength: number = 50): string {
     return summary.length > maxLength ? summary.substring(0, maxLength) + "..." : summary
   }
+
+  function isModelSelectable(model: string): boolean {
+    const provider = getModelProvider(model)
+
+    if (provider === "google") {
+      return apiKey.trim() !== ""
+    }
+
+    if (provider === "groq") {
+      return groqApiKey.trim() !== ""
+    }
+
+    return false
+  }
+
+  function getModelLabel(model: string): string {
+    const provider = getModelProvider(model)
+    const providerLabel = provider === "groq" ? "Groq" : "Google"
+    return `${providerLabel} - ${model}`
+  }
 </script>
 
 <main class="min-h-screen bg-gray-900 text-white p-8">
@@ -116,6 +149,20 @@
         <p class="mt-2 text-sm text-gray-400">Your API key is stored locally and never shared</p>
       </div>
 
+      <!-- Groq API Key Input -->
+      <div>
+        <label for="groqApiKey" class="block text-sm font-medium mb-2"> Groq API Key </label>
+        <input
+          id="groqApiKey"
+          type="password"
+          bind:value={groqApiKey}
+          placeholder="Enter your Groq API key"
+          class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg
+          focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+        <p class="mt-2 text-sm text-gray-400">Groq models are enabled when this key is set</p>
+      </div>
+
       <!-- Model Selection -->
       <div>
         <label for="model" class="block text-sm font-medium mb-2"> AI Model </label>
@@ -126,10 +173,10 @@
           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         >
           {#each availableModels as model}
-            <option value={model}>{model}</option>
+            <option value={model} disabled={!isModelSelectable(model)}>{getModelLabel(model)}</option>
           {/each}
         </select>
-        <p class="mt-2 text-sm text-gray-400">Choose the AI model for comment summarization</p>
+        <p class="mt-2 text-sm text-gray-400">Models are selectable only when their provider API key is set</p>
       </div>
 
       <!-- Max Comments -->

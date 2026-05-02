@@ -1,14 +1,15 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
-import { apiKeyStore, modelStore, systemPromptStore } from "./storage"
+import { createGroq } from "@ai-sdk/groq"
+import { apiKeyStore, groqApiKeyStore, modelStore, systemPromptStore } from "./storage"
 import { generateText } from "ai"
-import { getModelFallbackChain } from "./models"
+import { type AiProvider, getModelFallbackChain, getModelProvider } from "./models"
 
 let googleGenerativeAI: ReturnType<typeof createGoogleGenerativeAI> | null = null
 let googleGenerativeAIApiKey: string | null = null
+let groqAI: ReturnType<typeof createGroq> | null = null
+let groqAIApiKey: string | null = null
 
-async function getGoogleGenerativeAI() {
-  const apiKey = await apiKeyStore.getValue()
-
+function getGoogleGenerativeAI(apiKey: string) {
   if (!googleGenerativeAI || googleGenerativeAIApiKey !== apiKey) {
     googleGenerativeAI = createGoogleGenerativeAI({
       apiKey,
@@ -17,6 +18,23 @@ async function getGoogleGenerativeAI() {
   }
 
   return googleGenerativeAI
+}
+
+function getGroqAI(apiKey: string) {
+  if (!groqAI || groqAIApiKey !== apiKey) {
+    groqAI = createGroq({
+      apiKey,
+    })
+    groqAIApiKey = apiKey
+  }
+
+  return groqAI
+}
+
+function getAvailableProviders(apiKeys: Record<AiProvider, string>): AiProvider[] {
+  return (Object.entries(apiKeys) as [AiProvider, string][])
+    .filter(([, apiKey]) => apiKey.trim() !== "")
+    .map(([provider]) => provider)
 }
 
 export interface GenerateTextResult {
@@ -28,12 +46,28 @@ export interface GenerateTextResult {
 export async function GenerateText(prompt: string) {
   const preferredModel = await modelStore.getValue()
   const systemPrompt = await systemPromptStore.getValue()
-  const ai = await getGoogleGenerativeAI()
-  const attemptedModels = getModelFallbackChain(preferredModel)
+  const apiKeys = {
+    google: await apiKeyStore.getValue(),
+    groq: await groqApiKeyStore.getValue(),
+  } satisfies Record<AiProvider, string>
+  const availableProviders = getAvailableProviders(apiKeys)
+  const attemptedModels = getModelFallbackChain(preferredModel, availableProviders)
   const errors: unknown[] = []
+
+  if (attemptedModels.length === 0) {
+    throw new Error("No AI provider API key configured. Add a Google AI or Groq API key in options.")
+  }
 
   for (const model of attemptedModels) {
     try {
+      const provider = getModelProvider(model)
+
+      if (provider === null) {
+        throw new Error(`Unknown AI model provider for model: ${model}`)
+      }
+
+      const ai = provider === "google" ? getGoogleGenerativeAI(apiKeys.google) : getGroqAI(apiKeys.groq)
+
       const { text } = await generateText({
         model: ai(model),
         system: systemPrompt,
