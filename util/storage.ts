@@ -1,4 +1,5 @@
 import { storage } from "#imports"
+import { AI_MODEL_FALLBACKS } from "./models"
 
 export const apiKeyStore = storage.defineItem<string>("sync:apiKey", {
   fallback: "",
@@ -12,7 +13,7 @@ export const apiKeyStore = storage.defineItem<string>("sync:apiKey", {
 })
 
 export const modelStore = storage.defineItem<string>("local:model", {
-  fallback: "gemini-3.1-flash-lite-preview",
+  fallback: AI_MODEL_FALLBACKS[0],
   version: 1,
 })
 
