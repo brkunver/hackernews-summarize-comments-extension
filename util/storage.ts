@@ -27,6 +27,11 @@ export const modelStore = storage.defineItem<string>("local:model", {
   version: 1,
 })
 
+export const modelChainStore = storage.defineItem<string[]>("local:modelChain", {
+  fallback: [],
+  version: 1,
+})
+
 export const maxCommentsStore = storage.defineItem<number>("local:maxComments", {
   fallback: 100,
   version: 1,

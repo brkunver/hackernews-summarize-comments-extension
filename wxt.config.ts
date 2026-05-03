@@ -1,6 +1,10 @@
 import { defineConfig } from "wxt"
 import tailwindcss from "@tailwindcss/vite"
 
+function usesDevBranding(command: "build" | "serve", mode: string) {
+  return command === "serve" || mode === "development"
+}
+
 // See https://wxt.dev/api/config.html
 export default defineConfig({
   manifest: {
@@ -15,6 +19,13 @@ export default defineConfig({
           required: ["none"],
         },
       },
+    },
+  },
+  hooks: {
+    "build:manifestGenerated": (wxt, manifest) => {
+      if (usesDevBranding(wxt.config.command, wxt.config.mode) && manifest.name) {
+        manifest.name = `${manifest.name} (DEV)`
+      }
     },
   },
   modules: ["@wxt-dev/module-svelte"],

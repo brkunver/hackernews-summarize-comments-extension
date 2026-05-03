@@ -1,21 +1,31 @@
 <script lang="ts">
   import {
-    apiKeyStore,
-    cerebrasApiKeyStore,
-    groqApiKeyStore,
+    modelChainStore,
     modelStore,
     systemPromptStore,
     savedSummariesStore,
     maxCommentsStore,
     type SavedSummaryV2,
   } from "~/util/storage"
-  import { AVAILABLE_AI_MODELS, getModelProvider } from "~/util/models"
+  import {
+    MODEL_CHAIN_LENGTH,
+    formatModelWithProvider,
+    getAvailableModelRefs,
+    getConfiguredModelChain,
+    getModelProvider,
+    normalizeModelChain,
+    type AiProvider,
+  } from "~/util/models"
+  import {
+    AI_PROVIDER_API_KEY_FIELDS,
+    createEmptyProviderApiKeys,
+    getProviderApiKeys,
+    setProviderApiKeys,
+  } from "~/util/providers"
   import { onMount } from "svelte"
 
-  let apiKey = $state("")
-  let groqApiKey = $state("")
-  let cerebrasApiKey = $state("")
-  let selectedModel = $state("gemini-2.5-flash")
+  let apiKeys = $state<Record<AiProvider, string>>(createEmptyProviderApiKeys())
+  let selectedModelChain = $state<string[]>(Array(MODEL_CHAIN_LENGTH).fill(""))
   let systemPrompt = $state("")
   let maxComments = $state(100)
   let isLoading = $state(false)
@@ -23,15 +33,15 @@
   let isEditingPrompt = $state(false)
   let cachedSummaries = $state<SavedSummaryV2[]>([])
 
-  const availableModels = AVAILABLE_AI_MODELS
+  const availableModels = getAvailableModelRefs()
+  const modelSlots = Array.from({ length: MODEL_CHAIN_LENGTH }, (_, index) => index)
 
   // Load values from storage on component mount
   onMount(async () => {
     try {
-      apiKey = await apiKeyStore.getValue()
-      groqApiKey = await groqApiKeyStore.getValue()
-      cerebrasApiKey = await cerebrasApiKeyStore.getValue()
-      selectedModel = await modelStore.getValue()
+      apiKeys = await getProviderApiKeys()
+      const [configuredModelChain, legacyModel] = await Promise.all([modelChainStore.getValue(), modelStore.getValue()])
+      selectedModelChain = padModelChain(getConfiguredModelChain(configuredModelChain, legacyModel))
       systemPrompt = await systemPromptStore.getValue()
       maxComments = await maxCommentsStore.getValue()
       cachedSummaries = await savedSummariesStore.getValue()
@@ -47,20 +57,21 @@
 
     try {
       const selectableModels = availableModels.filter(isModelSelectable)
-      const modelToSave = isModelSelectable(selectedModel) ? selectedModel : selectableModels[0]
+      const modelChainToSave = normalizeModelChain(selectedModelChain.filter(isModelSelectable))
+      const fallbackModel = selectableModels[0]
+      const savedModelChain = modelChainToSave.length > 0 ? modelChainToSave : fallbackModel ? [fallbackModel] : []
 
-      await apiKeyStore.setValue(apiKey)
-      await groqApiKeyStore.setValue(groqApiKey)
-      await cerebrasApiKeyStore.setValue(cerebrasApiKey)
+      await setProviderApiKeys(apiKeys)
       await systemPromptStore.setValue(systemPrompt)
       await maxCommentsStore.setValue(maxComments)
+      await modelChainStore.setValue(savedModelChain)
+      selectedModelChain = padModelChain(savedModelChain)
 
-      if (modelToSave) {
-        selectedModel = modelToSave
-        await modelStore.setValue(selectedModel)
+      if (savedModelChain[0]) {
+        await modelStore.setValue(savedModelChain[0])
         saveMessage = "Settings saved successfully!"
       } else {
-        saveMessage = "Settings saved. Add an API key to enable model selection."
+        saveMessage = "Settings saved. Add an API key and choose at least one model to enable generation."
       }
 
       // Clear message after 3 seconds
@@ -116,25 +127,49 @@
   function isModelSelectable(model: string): boolean {
     const provider = getModelProvider(model)
 
-    if (provider === "google") {
-      return apiKey.trim() !== ""
+    return provider !== null && apiKeys[provider].trim() !== ""
+  }
+
+  function isModelSelectedInAnotherSlot(model: string, slotIndex: number): boolean {
+    return selectedModelChain.some((selectedModel, index) => index !== slotIndex && selectedModel === model)
+  }
+
+  function isModelOptionEnabled(model: string, slotIndex: number): boolean {
+    return isModelSelectable(model) && !isModelSelectedInAnotherSlot(model, slotIndex)
+  }
+
+  function updateSelectedModel(slotIndex: number, model: string) {
+    if (model !== "" && !isModelOptionEnabled(model, slotIndex)) {
+      return
     }
 
-    if (provider === "groq") {
-      return groqApiKey.trim() !== ""
-    }
+    selectedModelChain = selectedModelChain.map((selectedModel, index) => (index === slotIndex ? model : selectedModel))
+  }
 
-    if (provider === "cerebras") {
-      return cerebrasApiKey.trim() !== ""
+  function handleModelChange(slotIndex: number, event: Event) {
+    if (event.currentTarget instanceof HTMLSelectElement) {
+      updateSelectedModel(slotIndex, event.currentTarget.value)
     }
+  }
 
-    return false
+  function handleApiKeyInput(provider: AiProvider, event: Event) {
+    if (event.currentTarget instanceof HTMLInputElement) {
+      apiKeys = {
+        ...apiKeys,
+        [provider]: event.currentTarget.value,
+      }
+    }
+  }
+
+  function padModelChain(modelChain: readonly string[]): string[] {
+    return [
+      ...modelChain.slice(0, MODEL_CHAIN_LENGTH),
+      ...Array(Math.max(0, MODEL_CHAIN_LENGTH - modelChain.length)).fill(""),
+    ]
   }
 
   function getModelLabel(model: string): string {
-    const provider = getModelProvider(model)
-    const providerLabel = provider === "groq" ? "Groq" : provider === "cerebras" ? "Cerebras" : "Google"
-    return `${providerLabel} - ${model}`
+    return formatModelWithProvider(model)
   }
 </script>
 
@@ -143,62 +178,57 @@
     <h1 class="text-3xl font-bold mb-8">Settings</h1>
 
     <div class="space-y-6">
-      <!-- API Key Input -->
-      <div>
-        <label for="apiKey" class="block text-sm font-medium mb-2"> Google AI API Key </label>
-        <input
-          id="apiKey"
-          type="password"
-          bind:value={apiKey}
-          placeholder="Enter your Google AI API key"
-          class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg
-          focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        />
-        <p class="mt-2 text-sm text-gray-400">Your API key is stored locally and never shared</p>
-      </div>
-
-      <!-- Groq API Key Input -->
-      <div>
-        <label for="groqApiKey" class="block text-sm font-medium mb-2"> Groq API Key </label>
-        <input
-          id="groqApiKey"
-          type="password"
-          bind:value={groqApiKey}
-          placeholder="Enter your Groq API key"
-          class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg
-          focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        />
-        <p class="mt-2 text-sm text-gray-400">Groq models are enabled when this key is set</p>
-      </div>
-
-      <!-- Cerebras API Key Input -->
-      <div>
-        <label for="cerebrasApiKey" class="block text-sm font-medium mb-2"> Cerebras API Key </label>
-        <input
-          id="cerebrasApiKey"
-          type="password"
-          bind:value={cerebrasApiKey}
-          placeholder="Enter your Cerebras API key"
-          class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg
-          focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        />
-        <p class="mt-2 text-sm text-gray-400">Cerebras models are enabled when this key is set</p>
-      </div>
+      <!-- API Key Inputs -->
+      {#each AI_PROVIDER_API_KEY_FIELDS as field}
+        <div>
+          <label for={field.inputId} class="block text-sm font-medium mb-2"> {field.label} </label>
+          <input
+            id={field.inputId}
+            type="password"
+            value={apiKeys[field.provider]}
+            oninput={event => handleApiKeyInput(field.provider, event)}
+            placeholder={field.placeholder}
+            class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg
+            focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+          <p class="mt-2 text-sm text-gray-400">{field.helpText}</p>
+        </div>
+      {/each}
 
       <!-- Model Selection -->
       <div>
-        <label for="model" class="block text-sm font-medium mb-2"> AI Model </label>
-        <select
-          id="model"
-          bind:value={selectedModel}
-          class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg
-          focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        >
-          {#each availableModels as model}
-            <option value={model} disabled={!isModelSelectable(model)}>{getModelLabel(model)}</option>
+        <div class="mb-3">
+          <h2 class="text-sm font-medium">AI Model Fallback Order</h2>
+          <p class="mt-2 text-sm text-gray-400">
+            Choose up to 5 models. Generation tries them from top to bottom and stops after the last selected model.
+          </p>
+        </div>
+
+        <div class="space-y-3">
+          {#each modelSlots as slot}
+            <div>
+              <label for={`model-${slot}`} class="block text-xs font-medium text-gray-300 mb-1">
+                Model {slot + 1}
+              </label>
+              <select
+                id={`model-${slot}`}
+                value={selectedModelChain[slot] ?? ""}
+                onchange={event => handleModelChange(slot, event)}
+                class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg
+                focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">No model</option>
+                {#each availableModels as model}
+                  <option value={model} disabled={!isModelOptionEnabled(model, slot)}>{getModelLabel(model)}</option>
+                {/each}
+              </select>
+            </div>
           {/each}
-        </select>
-        <p class="mt-2 text-sm text-gray-400">Models are selectable only when their provider API key is set</p>
+        </div>
+
+        <p class="mt-2 text-sm text-gray-400">
+          Models are selectable only when their provider API key is set. Duplicate provider/model pairs are skipped.
+        </p>
       </div>
 
       <!-- Max Comments -->

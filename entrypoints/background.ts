@@ -1,5 +1,6 @@
 import { GenerateText } from "@@/util/generate-ai"
-import { savedSummariesStore, modelStore, ongoingGenerationStore } from "@@/util/storage"
+import { getConfiguredModelChain } from "@@/util/models"
+import { savedSummariesStore, modelChainStore, modelStore, ongoingGenerationStore } from "@@/util/storage"
 
 export default defineBackground(() => {
   console.log("Hello background!", { id: browser.runtime.id })
@@ -11,7 +12,11 @@ export default defineBackground(() => {
         const { comments, url } = message
 
         // Get current model and start tracking ongoing generation
-        const currentModel = await modelStore.getValue()
+        const [configuredModelChain, legacyModel] = await Promise.all([
+          modelChainStore.getValue(),
+          modelStore.getValue(),
+        ])
+        const currentModel = getConfiguredModelChain(configuredModelChain, legacyModel)[0] ?? legacyModel
         await ongoingGenerationStore.setValue({
           url,
           model: currentModel,
