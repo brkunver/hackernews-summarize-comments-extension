@@ -1,55 +1,15 @@
-import { createGoogleGenerativeAI } from "@ai-sdk/google"
-import { createGroq } from "@ai-sdk/groq"
-import { createCerebras } from "@ai-sdk/cerebras"
-import { apiKeyStore, cerebrasApiKeyStore, groqApiKeyStore, modelStore, systemPromptStore } from "./storage"
+import { modelChainStore, modelStore, systemPromptStore } from "./storage"
 import { generateText } from "ai"
-import { type AiProvider, getModelFallbackChain, getModelProvider } from "./models"
-
-let googleGenerativeAI: ReturnType<typeof createGoogleGenerativeAI> | null = null
-let googleGenerativeAIApiKey: string | null = null
-let groqAI: ReturnType<typeof createGroq> | null = null
-let groqAIApiKey: string | null = null
-let cerebrasAI: ReturnType<typeof createCerebras> | null = null
-let cerebrasAIApiKey: string | null = null
-
-function getGoogleGenerativeAI(apiKey: string) {
-  if (!googleGenerativeAI || googleGenerativeAIApiKey !== apiKey) {
-    googleGenerativeAI = createGoogleGenerativeAI({
-      apiKey,
-    })
-    googleGenerativeAIApiKey = apiKey
-  }
-
-  return googleGenerativeAI
-}
-
-function getGroqAI(apiKey: string) {
-  if (!groqAI || groqAIApiKey !== apiKey) {
-    groqAI = createGroq({
-      apiKey,
-    })
-    groqAIApiKey = apiKey
-  }
-
-  return groqAI
-}
-
-function getCerebrasAI(apiKey: string) {
-  if (!cerebrasAI || cerebrasAIApiKey !== apiKey) {
-    cerebrasAI = createCerebras({
-      apiKey,
-    })
-    cerebrasAIApiKey = apiKey
-  }
-
-  return cerebrasAI
-}
-
-function getAvailableProviders(apiKeys: Record<AiProvider, string>): AiProvider[] {
-  return (Object.entries(apiKeys) as [AiProvider, string][])
-    .filter(([, apiKey]) => apiKey.trim() !== "")
-    .map(([provider]) => provider)
-}
+import {
+  type AiProvider,
+  AI_PROVIDER_ORDER,
+  formatModelWithProvider,
+  getConfiguredModelChain,
+  getModelId,
+  getModelProvider,
+  getProviderLabel,
+} from "./models"
+import { getAvailableProviders, getProviderApiKey, getProviderApiKeys, getProviderLanguageModel } from "./providers"
 
 export interface GenerateTextResult {
   text: string
@@ -59,38 +19,39 @@ export interface GenerateTextResult {
 }
 
 export async function GenerateText(prompt: string) {
-  const preferredModel = await modelStore.getValue()
+  const [configuredModelChain, preferredModel] = await Promise.all([modelChainStore.getValue(), modelStore.getValue()])
   const systemPrompt = await systemPromptStore.getValue()
-  const apiKeys = {
-    google: await apiKeyStore.getValue(),
-    groq: await groqApiKeyStore.getValue(),
-    cerebras: await cerebrasApiKeyStore.getValue(),
-  } satisfies Record<AiProvider, string>
+  const apiKeys = await getProviderApiKeys()
   const availableProviders = getAvailableProviders(apiKeys)
-  const attemptedModels = getModelFallbackChain(preferredModel, availableProviders)
+  const attemptedModels = getConfiguredModelChain(configuredModelChain, preferredModel)
   const errors: unknown[] = []
 
-  if (attemptedModels.length === 0) {
-    throw new Error("No AI provider API key configured. Add a Google AI, Groq, or Cerebras API key in options.")
+  if (availableProviders.length === 0) {
+    const providerLabels = AI_PROVIDER_ORDER.map(getProviderLabel).join(", ")
+    throw new Error(`No AI provider API key configured. Add an API key for one of: ${providerLabels || "provider"}.`)
   }
 
-  for (const model of attemptedModels) {
+  if (attemptedModels.length === 0) {
+    throw new Error("No AI model chain configured. Choose at least one model in options.")
+  }
+
+  for (const modelRef of attemptedModels) {
     try {
-      const provider = getModelProvider(model)
+      const provider = getModelProvider(modelRef)
+      const model = getModelId(modelRef)
 
       if (provider === null) {
-        throw new Error(`Unknown AI model provider for model: ${model}`)
+        throw new Error(`Unknown AI model provider for model: ${modelRef}`)
       }
 
-      const ai =
-        provider === "google"
-          ? getGoogleGenerativeAI(apiKeys.google)
-          : provider === "groq"
-            ? getGroqAI(apiKeys.groq)
-            : getCerebrasAI(apiKeys.cerebras)
+      const apiKey = getProviderApiKey(apiKeys, provider)
+
+      if (apiKey === "") {
+        throw new Error(`Missing API key for ${formatModelWithProvider(modelRef, provider)}`)
+      }
 
       const { text } = await generateText({
-        model: ai(model),
+        model: getProviderLanguageModel(provider, apiKey, model),
         system: systemPrompt,
         prompt,
       })
@@ -107,7 +68,7 @@ export async function GenerateText(prompt: string) {
       } satisfies GenerateTextResult
     } catch (error) {
       errors.push(error)
-      console.warn(`AI model ${model} failed, trying fallback if available.`, error)
+      console.warn(`AI model ${modelRef} failed, trying next configured model if available.`, error)
     }
   }
 
@@ -116,5 +77,5 @@ export async function GenerateText(prompt: string) {
     .filter(Boolean)
     .join(" | ")
 
-  throw new Error(`All AI models failed: ${errorMessages || "unknown error"}`)
+  throw new Error(`All configured AI models failed: ${errorMessages || "unknown error"}`)
 }

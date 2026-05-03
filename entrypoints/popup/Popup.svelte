@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { savedSummariesStore, modelStore, ongoingGenerationStore } from "~/util/storage"
-  import { formatModelWithProvider, getModelProvider, type AiProvider } from "~/util/models"
+  import { savedSummariesStore, modelChainStore, modelStore, ongoingGenerationStore } from "~/util/storage"
+  import { formatModelWithProvider, getConfiguredModelChain, getModelProvider, type AiProvider } from "~/util/models"
   import { onMount } from "svelte"
   import snarkdown from "snarkdown"
 
@@ -22,14 +22,21 @@
     return url.includes("news.ycombinator.com/item?id=")
   }
 
+  async function loadCurrentModel() {
+    const [configuredModelChain, legacyModel] = await Promise.all([modelChainStore.getValue(), modelStore.getValue()])
+    const currentModel = getConfiguredModelChain(configuredModelChain, legacyModel)[0] ?? ""
+
+    currentModelName = currentModel
+    currentModelProvider = getModelProvider(currentModel)
+  }
+
   // Load cached summary on component mount and listen for background messages
   onMount(async () => {
     try {
       const [tab] = await browser.tabs.query({ active: true, currentWindow: true })
       if (tab.url) {
         currentUrl = tab.url
-        currentModelName = await modelStore.getValue()
-        currentModelProvider = getModelProvider(currentModelName)
+        await loadCurrentModel()
         isValidHackerNewsUrl = checkIfHackerNewsUrl(tab.url)
         if (isValidHackerNewsUrl) {
           await loadCachedSummary(tab.url)
@@ -130,8 +137,7 @@
 
         isProcessingInBackground = true
         isGeneratingSummary = true
-        currentModelName = await modelStore.getValue()
-        currentModelProvider = getModelProvider(currentModelName)
+        await loadCurrentModel()
 
         const backgroundResponse = await browser.runtime.sendMessage({
           action: "generateSummary",

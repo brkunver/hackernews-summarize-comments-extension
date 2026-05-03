@@ -1,4 +1,5 @@
-export type AiProvider = "google" | "groq" | "cerebras"
+export const MODEL_CHAIN_LENGTH = 5
+const MODEL_REF_SEPARATOR = "::"
 
 export const GOOGLE_AI_MODEL_FALLBACKS = [
   "gemini-3.1-flash-lite-preview",
@@ -10,91 +11,142 @@ export const GROQ_AI_MODEL_FALLBACKS = ["openai/gpt-oss-120b", "openai/gpt-oss-2
 
 export const CEREBRAS_AI_MODEL_FALLBACKS = ["zai-glm-4.7", "gpt-oss-120b", "qwen-3-235b-a22b-instruct-2507"] as const
 
-export const AI_MODEL_FALLBACKS = [
-  ...GOOGLE_AI_MODEL_FALLBACKS,
-  ...GROQ_AI_MODEL_FALLBACKS,
-  ...CEREBRAS_AI_MODEL_FALLBACKS,
-] as const
-
-export const AVAILABLE_AI_MODELS = [
+export const GOOGLE_AI_MODELS = [
   ...GOOGLE_AI_MODEL_FALLBACKS,
   "gemini-3.1-flash-lite",
   "gemini-3.0-flash",
   "gemini-2.5-flash-lite",
   "gemma-3-27b-it",
-  ...GROQ_AI_MODEL_FALLBACKS,
-  ...CEREBRAS_AI_MODEL_FALLBACKS,
 ] as const
 
-export type AiModel = (typeof AVAILABLE_AI_MODELS)[number]
+export const AI_PROVIDER_LABELS = {
+  google: "Google",
+  groq: "Groq",
+  cerebras: "Cerebras",
+} as const
 
-const MODEL_PROVIDERS: Record<string, AiProvider> = {
-  ...Object.fromEntries(
-    AVAILABLE_AI_MODELS.filter(model => model.startsWith("gemini") || model.startsWith("gemma")).map(model => [
-      model,
-      "google",
-    ]),
-  ),
-  ...Object.fromEntries(GROQ_AI_MODEL_FALLBACKS.map(model => [model, "groq"])),
-  ...Object.fromEntries(CEREBRAS_AI_MODEL_FALLBACKS.map(model => [model, "cerebras"])),
-}
+export type AiProvider = keyof typeof AI_PROVIDER_LABELS
 
-const PROVIDER_FALLBACKS = {
-  google: GOOGLE_AI_MODEL_FALLBACKS,
+export const AI_PROVIDER_MODELS = {
+  google: GOOGLE_AI_MODELS,
   groq: GROQ_AI_MODEL_FALLBACKS,
   cerebras: CEREBRAS_AI_MODEL_FALLBACKS,
 } satisfies Record<AiProvider, readonly string[]>
 
-export function getModelProvider(model: string): AiProvider | null {
-  return MODEL_PROVIDERS[model] ?? null
+export const AI_PROVIDER_ORDER = Object.keys(AI_PROVIDER_LABELS) as AiProvider[]
+
+export const AVAILABLE_AI_MODELS = AI_PROVIDER_ORDER.flatMap(provider => AI_PROVIDER_MODELS[provider])
+
+export type AiModel = (typeof AVAILABLE_AI_MODELS)[number]
+export type AiModelRef = `${AiProvider}${typeof MODEL_REF_SEPARATOR}${string}`
+
+const LEGACY_MODEL_PROVIDERS: Record<string, AiProvider> = {
+  ...Object.fromEntries(
+    AI_PROVIDER_ORDER.flatMap(provider => AI_PROVIDER_MODELS[provider].map(model => [model, provider])),
+  ),
+}
+
+export function createModelRef(provider: AiProvider, model: string): AiModelRef {
+  return `${provider}${MODEL_REF_SEPARATOR}${model}`
+}
+
+export function parseModelRef(modelRef: string): { provider: AiProvider; model: string } | null {
+  const separatorIndex = modelRef.indexOf(MODEL_REF_SEPARATOR)
+
+  if (separatorIndex > 0) {
+    const provider = modelRef.slice(0, separatorIndex) as AiProvider
+    const model = modelRef.slice(separatorIndex + MODEL_REF_SEPARATOR.length)
+
+    if (AI_PROVIDER_ORDER.includes(provider) && model.trim() !== "") {
+      return {
+        provider,
+        model,
+      }
+    }
+  }
+
+  const legacyProvider = LEGACY_MODEL_PROVIDERS[modelRef]
+
+  if (legacyProvider) {
+    return {
+      provider: legacyProvider,
+      model: modelRef,
+    }
+  }
+
+  return null
+}
+
+export function getModelProvider(modelRef: string): AiProvider | null {
+  return parseModelRef(modelRef)?.provider ?? null
 }
 
 export function getProviderLabel(provider: AiProvider | null): string {
-  if (provider === "groq") {
-    return "Groq"
-  }
-
-  if (provider === "cerebras") {
-    return "Cerebras"
-  }
-
-  return "Google"
+  return provider ? AI_PROVIDER_LABELS[provider] : "Unknown"
 }
 
-export function formatModelWithProvider(model: string, provider: AiProvider | null = getModelProvider(model)): string {
-  return `${getProviderLabel(provider)} - ${model}`
+export function getModelId(modelRef: string): string {
+  return parseModelRef(modelRef)?.model ?? modelRef
+}
+
+export function formatModelWithProvider(
+  modelRef: string,
+  provider: AiProvider | null = getModelProvider(modelRef),
+): string {
+  return `${getProviderLabel(provider)} - ${getModelId(modelRef)}`
 }
 
 export function getModelsForAvailableProviders(availableProviders: AiProvider[]): string[] {
   const providers = new Set(availableProviders)
-  return AVAILABLE_AI_MODELS.filter(model => {
-    const provider = getModelProvider(model)
+  return getAvailableModelRefs().filter(modelRef => {
+    const provider = getModelProvider(modelRef)
     return provider !== null && providers.has(provider)
   })
 }
 
-export function getModelFallbackChain(preferredModel: string, availableProviders: AiProvider[]): string[] {
-  const availableProviderSet = new Set(availableProviders)
-  const preferredProvider = getModelProvider(preferredModel)
-  const preferredProviderIsAvailable = preferredProvider !== null && availableProviderSet.has(preferredProvider)
-  const providerOrder: AiProvider[] = [
-    ...(preferredProviderIsAvailable ? [preferredProvider] : []),
-    ...availableProviders.filter(provider => provider !== preferredProvider),
-  ]
-  const fallbacks = providerOrder.flatMap(provider => {
-    const providerFallbacks: readonly string[] = PROVIDER_FALLBACKS[provider]
-    const fallbackStartIndex = providerFallbacks.indexOf(preferredModel)
+export function getAvailableModelRefs(): string[] {
+  return AI_PROVIDER_ORDER.flatMap(provider =>
+    AI_PROVIDER_MODELS[provider].map(model => createModelRef(provider, model)),
+  )
+}
 
-    if (fallbackStartIndex >= 0) {
-      return providerFallbacks.slice(fallbackStartIndex)
+export function normalizeModelChain(modelRefs: readonly string[]): string[] {
+  const seenModels = new Set<string>()
+  const normalizedModels: string[] = []
+
+  for (const modelRef of modelRefs) {
+    const parsedModel = parseModelRef(modelRef.trim())
+
+    if (parsedModel === null) {
+      continue
     }
 
-    if (provider === preferredProvider) {
-      return [preferredModel, ...providerFallbacks]
+    const normalizedModelRef = createModelRef(parsedModel.provider, parsedModel.model)
+
+    if (seenModels.has(normalizedModelRef)) {
+      continue
     }
 
-    return providerFallbacks
-  })
+    seenModels.add(normalizedModelRef)
+    normalizedModels.push(normalizedModelRef)
 
-  return [...new Set(fallbacks)]
+    if (normalizedModels.length >= MODEL_CHAIN_LENGTH) {
+      break
+    }
+  }
+
+  return normalizedModels
+}
+
+export function getConfiguredModelChain(
+  configuredModelChain: readonly string[],
+  legacyPreferredModel: string,
+): string[] {
+  const modelChain = normalizeModelChain(configuredModelChain)
+
+  if (modelChain.length > 0) {
+    return modelChain
+  }
+
+  return normalizeModelChain([legacyPreferredModel])
 }
