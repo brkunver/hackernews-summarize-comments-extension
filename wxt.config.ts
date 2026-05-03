@@ -24,7 +24,12 @@ export default defineConfig({
   hooks: {
     "build:manifestGenerated": (wxt, manifest) => {
       if (usesDevBranding(wxt.config.command, wxt.config.mode) && manifest.name) {
-        manifest.name = `${manifest.name} (DEV)`
+        const devExtensionName = `(DEV) ${manifest.name}`
+        manifest.name = devExtensionName
+
+        if (manifest.action) {
+          manifest.action.default_title = devExtensionName
+        }
       }
     },
   },
