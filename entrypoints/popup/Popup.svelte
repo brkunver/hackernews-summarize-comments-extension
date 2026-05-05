@@ -180,6 +180,10 @@
   function getSummaryCreatedByLabel(): string {
     return summaryCreatedBy ? formatModelWithProvider(summaryCreatedBy, summaryCreatedByProvider) : ""
   }
+
+  function getExtensionVersion(): string {
+    return browser.runtime.getManifest().version
+  }
 </script>
 
 <main class="p-4 min-w-[350px] max-w-[500px]">
@@ -218,6 +222,8 @@
     >
       Options
     </button>
+
+    <p class="text-center text-[11px] text-gray-400">v{getExtensionVersion()}</p>
   </div>
 
   <!-- Error Display -->

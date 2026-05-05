@@ -171,6 +171,10 @@
   function getModelLabel(model: string): string {
     return formatModelWithProvider(model)
   }
+
+  function getExtensionVersion(): string {
+    return browser.runtime.getManifest().version
+  }
 </script>
 
 <main class="min-h-screen bg-gray-900 text-white p-8">
@@ -363,5 +367,7 @@
         </div>
       </div>
     {/if}
+
+    <p class="mt-8 text-center text-xs text-gray-500">v{getExtensionVersion()}</p>
   </div>
 </main>
