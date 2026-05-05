@@ -37,6 +37,13 @@ export const maxCommentsStore = storage.defineItem<number>("local:maxComments", 
   version: 1,
 })
 
+export const DEFAULT_SUMMARY_TIMEOUT_SECONDS = 10
+
+export const timeoutStore = storage.defineItem<number>("sync:timeout", {
+  fallback: DEFAULT_SUMMARY_TIMEOUT_SECONDS,
+  version: 1,
+})
+
 interface SavedSummaryV1 {
   id: string
   summary: string

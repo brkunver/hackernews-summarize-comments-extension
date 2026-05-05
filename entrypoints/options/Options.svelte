@@ -1,8 +1,10 @@
 <script lang="ts">
   import {
+    DEFAULT_SUMMARY_TIMEOUT_SECONDS,
     modelChainStore,
     modelStore,
     systemPromptStore,
+    timeoutStore,
     savedSummariesStore,
     maxCommentsStore,
     type SavedSummaryV2,
@@ -28,6 +30,7 @@
   let selectedModelChain = $state<string[]>(Array(MODEL_CHAIN_LENGTH).fill(""))
   let systemPrompt = $state("")
   let maxComments = $state(100)
+  let timeout = $state(DEFAULT_SUMMARY_TIMEOUT_SECONDS)
   let isLoading = $state(false)
   let saveMessage = $state("")
   let isEditingPrompt = $state(false)
@@ -44,6 +47,7 @@
       selectedModelChain = padModelChain(getConfiguredModelChain(configuredModelChain, legacyModel))
       systemPrompt = await systemPromptStore.getValue()
       maxComments = await maxCommentsStore.getValue()
+      timeout = await timeoutStore.getValue()
       cachedSummaries = await savedSummariesStore.getValue()
     } catch (error) {
       console.error("Error loading settings:", error)
@@ -64,8 +68,10 @@
       await setProviderApiKeys(apiKeys)
       await systemPromptStore.setValue(systemPrompt)
       await maxCommentsStore.setValue(maxComments)
+      await timeoutStore.setValue(normalizeTimeout(timeout))
       await modelChainStore.setValue(savedModelChain)
       selectedModelChain = padModelChain(savedModelChain)
+      timeout = normalizeTimeout(timeout)
 
       if (savedModelChain[0]) {
         await modelStore.setValue(savedModelChain[0])
@@ -122,6 +128,10 @@
 
   function truncateSummary(summary: string, maxLength: number = 50): string {
     return summary.length > maxLength ? summary.substring(0, maxLength) + "..." : summary
+  }
+
+  function normalizeTimeout(value: number): number {
+    return Number.isFinite(value) && value > 0 ? Math.floor(value) : DEFAULT_SUMMARY_TIMEOUT_SECONDS
   }
 
   function isModelSelectable(model: string): boolean {
@@ -248,6 +258,23 @@
         />
         <p class="mt-2 text-sm text-gray-400">
           Maximum number of comments to process. Enter 0 or -1 for no limit. Default: 1000
+        </p>
+      </div>
+
+      <!-- Timeout -->
+      <div>
+        <label for="timeout" class="block text-sm font-medium mb-2"> Model Timeout </label>
+        <input
+          id="timeout"
+          type="number"
+          bind:value={timeout}
+          min="1"
+          class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg
+          focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+        <p class="mt-2 text-sm text-gray-400">
+          Seconds to wait for each model before trying the next configured model. Default:
+          {DEFAULT_SUMMARY_TIMEOUT_SECONDS}
         </p>
       </div>
 

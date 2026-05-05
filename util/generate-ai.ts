@@ -1,4 +1,10 @@
-import { modelChainStore, modelStore, systemPromptStore } from "./storage"
+import {
+  DEFAULT_SUMMARY_TIMEOUT_SECONDS,
+  modelChainStore,
+  modelStore,
+  systemPromptStore,
+  timeoutStore,
+} from "./storage"
 import { generateText } from "ai"
 import {
   type AiProvider,
@@ -18,9 +24,17 @@ export interface GenerateTextResult {
   attemptedModels: string[]
 }
 
+function normalizeTimeoutSeconds(timeoutSeconds: number): number {
+  return Number.isFinite(timeoutSeconds) && timeoutSeconds > 0 ? timeoutSeconds : DEFAULT_SUMMARY_TIMEOUT_SECONDS
+}
+
 export async function GenerateText(prompt: string) {
   const [configuredModelChain, preferredModel] = await Promise.all([modelChainStore.getValue(), modelStore.getValue()])
-  const systemPrompt = await systemPromptStore.getValue()
+  const [systemPrompt, configuredTimeoutSeconds] = await Promise.all([
+    systemPromptStore.getValue(),
+    timeoutStore.getValue(),
+  ])
+  const timeoutMs = normalizeTimeoutSeconds(configuredTimeoutSeconds) * 1000
   const apiKeys = await getProviderApiKeys()
   const availableProviders = getAvailableProviders(apiKeys)
   const attemptedModels = getConfiguredModelChain(configuredModelChain, preferredModel)
@@ -54,6 +68,7 @@ export async function GenerateText(prompt: string) {
         model: getProviderLanguageModel(provider, apiKey, model),
         system: systemPrompt,
         prompt,
+        timeout: timeoutMs,
       })
 
       if (text.trim() === "") {
