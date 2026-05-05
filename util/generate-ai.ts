@@ -24,11 +24,18 @@ export interface GenerateTextResult {
   attemptedModels: string[]
 }
 
+export class SummaryGenerationCancelledError extends Error {
+  constructor() {
+    super("Summary generation cancelled")
+    this.name = "SummaryGenerationCancelledError"
+  }
+}
+
 function normalizeTimeoutSeconds(timeoutSeconds: number): number {
   return Number.isFinite(timeoutSeconds) && timeoutSeconds > 0 ? timeoutSeconds : DEFAULT_SUMMARY_TIMEOUT_SECONDS
 }
 
-export async function GenerateText(prompt: string) {
+export async function GenerateText(prompt: string, abortSignal?: AbortSignal) {
   const [configuredModelChain, preferredModel] = await Promise.all([modelChainStore.getValue(), modelStore.getValue()])
   const [systemPrompt, configuredTimeoutSeconds] = await Promise.all([
     systemPromptStore.getValue(),
@@ -51,6 +58,10 @@ export async function GenerateText(prompt: string) {
 
   for (const modelRef of attemptedModels) {
     try {
+      if (abortSignal?.aborted) {
+        throw new SummaryGenerationCancelledError()
+      }
+
       const provider = getModelProvider(modelRef)
       const model = getModelId(modelRef)
 
@@ -68,8 +79,13 @@ export async function GenerateText(prompt: string) {
         model: getProviderLanguageModel(provider, apiKey, model),
         system: systemPrompt,
         prompt,
+        abortSignal,
         timeout: timeoutMs,
       })
+
+      if (abortSignal?.aborted) {
+        throw new SummaryGenerationCancelledError()
+      }
 
       if (text.trim() === "") {
         throw new Error("AI returned empty summary")
@@ -82,6 +98,10 @@ export async function GenerateText(prompt: string) {
         attemptedModels,
       } satisfies GenerateTextResult
     } catch (error) {
+      if (abortSignal?.aborted || error instanceof SummaryGenerationCancelledError) {
+        throw new SummaryGenerationCancelledError()
+      }
+
       errors.push(error)
       console.warn(`AI model ${modelRef} failed, trying next configured model if available.`, error)
     }

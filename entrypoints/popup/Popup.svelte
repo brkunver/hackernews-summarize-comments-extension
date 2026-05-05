@@ -10,6 +10,7 @@
   let summary = $state("")
   let error = $state("")
   let isGeneratingSummary = $state(false)
+  let isCancellingSummary = $state(false)
   let currentUrl = $state("")
   let isProcessingInBackground = $state(false)
   let currentModelName = $state("")
@@ -57,8 +58,16 @@
         currentModelProvider = message.provider || getModelProvider(currentModelName)
         isProcessingInBackground = false
         isGeneratingSummary = false
+        isCancellingSummary = false
         updateButtonText()
         console.log("Summary completed in background:", message.summary)
+      }
+
+      if (message.action === "summaryCancelled" && message.url === currentUrl) {
+        isProcessingInBackground = false
+        isGeneratingSummary = false
+        isCancellingSummary = false
+        updateButtonText()
       }
     })
   })
@@ -146,9 +155,12 @@
         })
 
         if (!backgroundResponse?.success) {
-          error = backgroundResponse?.error || "Failed to generate summary"
           isProcessingInBackground = false
           isGeneratingSummary = false
+          isCancellingSummary = false
+          if (!backgroundResponse?.cancelled) {
+            error = backgroundResponse?.error || "Failed to generate summary"
+          }
           return
         }
 
@@ -165,6 +177,32 @@
       console.error("Error:", err)
     } finally {
       isLoading = false
+      updateButtonText()
+    }
+  }
+
+  async function cancelSummaryGeneration() {
+    if (!currentUrl || isCancellingSummary) {
+      return
+    }
+
+    isCancellingSummary = true
+    error = ""
+
+    try {
+      await browser.runtime.sendMessage({
+        action: "cancelSummaryGeneration",
+        url: currentUrl,
+      })
+
+      await ongoingGenerationStore.setValue(null)
+      isProcessingInBackground = false
+      isGeneratingSummary = false
+    } catch (err) {
+      error = "Failed to cancel summary generation"
+      console.error("Error cancelling summary generation:", err)
+    } finally {
+      isCancellingSummary = false
       updateButtonText()
     }
   }
@@ -215,6 +253,16 @@
     >
       {buttonText}
     </button>
+
+    {#if isGeneratingSummary || isProcessingInBackground}
+      <button
+        onclick={cancelSummaryGeneration}
+        disabled={isCancellingSummary}
+        class="w-full bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white font-semibold py-2 px-4 rounded transition-colors"
+      >
+        {isCancellingSummary ? "Cancelling..." : "Cancel Generation"}
+      </button>
+    {/if}
 
     <button
       onclick={openOptions}
