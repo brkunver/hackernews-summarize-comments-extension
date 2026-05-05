@@ -1,5 +1,6 @@
 <script lang="ts">
   import {
+    DEFAULT_MAX_COMMENTS,
     DEFAULT_SUMMARY_TIMEOUT_SECONDS,
     modelChainStore,
     modelStore,
@@ -9,6 +10,7 @@
     maxCommentsStore,
     type SavedSummaryV2,
   } from "~/util/storage"
+  import { getErrorMessage } from "~/util/errors"
   import {
     MODEL_CHAIN_LENGTH,
     formatModelWithProvider,
@@ -46,10 +48,11 @@
       const [configuredModelChain, legacyModel] = await Promise.all([modelChainStore.getValue(), modelStore.getValue()])
       selectedModelChain = padModelChain(getConfiguredModelChain(configuredModelChain, legacyModel))
       systemPrompt = await systemPromptStore.getValue()
-      maxComments = await maxCommentsStore.getValue()
+      maxComments = normalizeMaxComments(await maxCommentsStore.getValue())
       timeout = await timeoutStore.getValue()
       cachedSummaries = await savedSummariesStore.getValue()
     } catch (error) {
+      saveMessage = `Error loading settings: ${getErrorMessage(error)}`
       console.error("Error loading settings:", error)
     }
   })
@@ -67,10 +70,11 @@
 
       await setProviderApiKeys(apiKeys)
       await systemPromptStore.setValue(systemPrompt)
-      await maxCommentsStore.setValue(maxComments)
+      await maxCommentsStore.setValue(normalizeMaxComments(maxComments))
       await timeoutStore.setValue(normalizeTimeout(timeout))
       await modelChainStore.setValue(savedModelChain)
       selectedModelChain = padModelChain(savedModelChain)
+      maxComments = normalizeMaxComments(maxComments)
       timeout = normalizeTimeout(timeout)
 
       if (savedModelChain[0]) {
@@ -86,7 +90,7 @@
       }, 3000)
     } catch (error) {
       console.error("Error saving settings:", error)
-      saveMessage = "Error saving settings"
+      saveMessage = `Error saving settings: ${getErrorMessage(error)}`
     } finally {
       isLoading = false
     }
@@ -102,6 +106,7 @@
       cachedSummaries = updatedSummaries
       await savedSummariesStore.setValue(updatedSummaries)
     } catch (error) {
+      saveMessage = `Error deleting cached summary: ${getErrorMessage(error)}`
       console.error("Error deleting cached summary:", error)
     }
   }
@@ -112,6 +117,7 @@
         cachedSummaries = []
         await savedSummariesStore.setValue([])
       } catch (error) {
+        saveMessage = `Error deleting cached summaries: ${getErrorMessage(error)}`
         console.error("Error deleting all cached summaries:", error)
       }
     }
@@ -132,6 +138,18 @@
 
   function normalizeTimeout(value: number): number {
     return Number.isFinite(value) && value > 0 ? Math.floor(value) : DEFAULT_SUMMARY_TIMEOUT_SECONDS
+  }
+
+  function normalizeMaxComments(value: number): number {
+    if (!Number.isFinite(value)) {
+      return DEFAULT_MAX_COMMENTS
+    }
+
+    if (value <= 0) {
+      return value === 0 ? 0 : -1
+    }
+
+    return Math.floor(value)
   }
 
   function isModelSelectable(model: string): boolean {
@@ -257,7 +275,7 @@
           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
         <p class="mt-2 text-sm text-gray-400">
-          Maximum number of comments to process. Enter 0 or -1 for no limit. Default: 1000
+          Maximum number of comments to process. Enter 0 or -1 for no limit. Default: {DEFAULT_MAX_COMMENTS}
         </p>
       </div>
 

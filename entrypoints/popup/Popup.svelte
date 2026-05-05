@@ -1,14 +1,62 @@
 <script lang="ts">
-  import { savedSummariesStore, modelChainStore, modelStore, ongoingGenerationStore } from "~/util/storage"
+  import {
+    lastSummaryErrorStore,
+    savedSummariesStore,
+    modelChainStore,
+    modelStore,
+    ongoingGenerationStore,
+    type LastSummaryError,
+  } from "~/util/storage"
   import { formatModelWithProvider, getConfiguredModelChain, getModelProvider, type AiProvider } from "~/util/models"
+  import { getErrorMessage } from "~/util/errors"
   import { onMount } from "svelte"
   import snarkdown from "snarkdown"
+
+  interface GetCommentsResponse {
+    success?: boolean
+    comments?: string
+    error?: string
+    details?: string
+  }
+
+  interface GenerateSummaryResponse {
+    success?: boolean
+    started?: boolean
+    model?: string
+    error?: string
+    details?: string
+    cancelled?: boolean
+  }
+
+  interface GenerationStatusResponse {
+    success?: boolean
+    active?: boolean
+    model?: string
+    timestamp?: number
+    error?: string
+    details?: string
+  }
+
+  interface RuntimeSummaryMessage {
+    action?: string
+    url?: string
+    summary?: string
+    model?: string
+    provider?: AiProvider
+    error?: string
+    details?: string
+    warning?: string
+  }
+
+  const LAST_ERROR_DISPLAY_MS = 24 * 60 * 60 * 1000
 
   let isLoading = $state(false)
   let buttonText = $state("Get Comments")
   let comments = $state("")
   let summary = $state("")
   let error = $state("")
+  let errorDetails = $state("")
+  let warning = $state("")
   let isGeneratingSummary = $state(false)
   let isCancellingSummary = $state(false)
   let currentUrl = $state("")
@@ -31,48 +79,76 @@
     currentModelProvider = getModelProvider(currentModel)
   }
 
-  // Load cached summary on component mount and listen for background messages
-  onMount(async () => {
+  onMount(() => {
+    let isMounted = true
+
+    const handleRuntimeMessage = (message: RuntimeSummaryMessage) => {
+      if (message.url !== currentUrl) {
+        return
+      }
+
+      if (message.action === "summaryComplete") {
+        handleSummaryComplete(message)
+      }
+
+      if (message.action === "summaryFailed") {
+        resetGenerationState()
+        setErrorMessage(message.error || "Summary generation failed.", message.details)
+        updateButtonText()
+      }
+
+      if (message.action === "summaryCancelled") {
+        resetGenerationState()
+        warning = "Summary generation was cancelled."
+        updateButtonText()
+      }
+    }
+
+    browser.runtime.onMessage.addListener(handleRuntimeMessage)
+    void initializePopup(() => isMounted)
+
+    return () => {
+      isMounted = false
+      browser.runtime.onMessage.removeListener(handleRuntimeMessage)
+    }
+  })
+
+  async function initializePopup(isMounted: () => boolean) {
     try {
       const [tab] = await browser.tabs.query({ active: true, currentWindow: true })
+
+      if (!isMounted()) {
+        return
+      }
+
       if (tab.url) {
         currentUrl = tab.url
         await loadCurrentModel()
+
+        if (!isMounted()) {
+          return
+        }
+
         isValidHackerNewsUrl = checkIfHackerNewsUrl(tab.url)
         if (isValidHackerNewsUrl) {
           await loadCachedSummary(tab.url)
-          await checkOngoingGeneration()
+          const hasActiveGeneration = await checkOngoingGeneration()
+
+          if (!hasActiveGeneration) {
+            await loadLastSummaryError(tab.url)
+          }
         }
         updateButtonText()
+      } else {
+        setErrorMessage("No URL found for the current tab.")
       }
     } catch (err) {
-      console.error("Error loading cached summary:", err)
+      setErrorFromUnknown(err, "Failed to load popup state.")
+      console.error("Error loading popup state:", err)
     }
+  }
 
-    browser.runtime.onMessage.addListener(message => {
-      if (message.action === "summaryComplete" && message.url === currentUrl) {
-        summary = message.summary
-        summaryCreatedBy = message.model || currentModelName
-        summaryCreatedByProvider = message.provider || getModelProvider(summaryCreatedBy)
-        currentModelName = message.model || currentModelName
-        currentModelProvider = message.provider || getModelProvider(currentModelName)
-        isProcessingInBackground = false
-        isGeneratingSummary = false
-        isCancellingSummary = false
-        updateButtonText()
-        console.log("Summary completed in background:", message.summary)
-      }
-
-      if (message.action === "summaryCancelled" && message.url === currentUrl) {
-        isProcessingInBackground = false
-        isGeneratingSummary = false
-        isCancellingSummary = false
-        updateButtonText()
-      }
-    })
-  })
-
-  async function loadCachedSummary(url: string) {
+  async function loadCachedSummary(url: string): Promise<boolean> {
     try {
       const savedSummaries = await savedSummariesStore.getValue()
       const cachedSummary = savedSummaries.find(item => item.id === url)
@@ -83,15 +159,35 @@
         summaryCreatedByProvider =
           (cachedSummary.provider as AiProvider | undefined) || getModelProvider(cachedSummary.createdBy)
         console.log("Loaded cached summary for:", url)
+        return true
       }
     } catch (err) {
+      warning = `Cached summary could not be loaded: ${getErrorMessage(err)}`
       console.error("Error loading cached summary:", err)
+    }
+
+    return false
+  }
+
+  async function loadLastSummaryError(url: string) {
+    try {
+      const lastError = await lastSummaryErrorStore.getValue()
+
+      if (lastError?.url === url && lastError.timestamp > Date.now() - LAST_ERROR_DISPLAY_MS) {
+        setErrorMessage(lastError.message, lastError.details)
+      }
+    } catch (err) {
+      console.error("Error loading last summary error:", err)
     }
   }
 
   function updateButtonText() {
     if (!isValidHackerNewsUrl) {
       buttonText = "Not a Hacker News Page"
+    } else if (isLoading) {
+      buttonText = "Loading..."
+    } else if (isGeneratingSummary || isProcessingInBackground) {
+      buttonText = "Generating..."
     } else if (summary?.trim()) {
       buttonText = "Regenerate Summary"
     } else {
@@ -99,48 +195,93 @@
     }
   }
 
-  async function checkOngoingGeneration() {
+  async function checkOngoingGeneration(): Promise<boolean> {
     try {
+      const status = await withTimeout(
+        browser.runtime.sendMessage({
+          action: "getGenerationStatus",
+          url: currentUrl,
+        }) as Promise<GenerationStatusResponse>,
+        5000,
+        "Timed out while checking summary generation status.",
+      )
+
+      if (!status?.success) {
+        setErrorMessage(status?.error || "Failed to check summary generation status.", status?.details)
+        resetGenerationState()
+        return false
+      }
+
+      if (status.active && status.model) {
+        isProcessingInBackground = true
+        isGeneratingSummary = true
+        currentModelName = status.model
+        currentModelProvider = getModelProvider(status.model)
+        updateButtonText()
+        return true
+      }
+
+      resetGenerationState()
+
+      if (status.error) {
+        setErrorMessage(status.error, status.details)
+      }
+
+      return false
+    } catch (err) {
       const ongoing = await ongoingGenerationStore.getValue()
+
       if (ongoing && ongoing.url === currentUrl && ongoing.timestamp > Date.now() - 300000) {
-        // 5 minutes timeout
         isProcessingInBackground = true
         isGeneratingSummary = true
         currentModelName = ongoing.model
         currentModelProvider = getModelProvider(ongoing.model)
+        warning = "Could not confirm the background job status. If this stays stuck, cancel and try again."
         updateButtonText()
+        return true
       }
-    } catch (err) {
+
+      setErrorFromUnknown(err, "Failed to check summary generation status.")
       console.error("Error checking ongoing generation:", err)
+      return false
     }
   }
 
   async function getComments() {
     isLoading = true
-    buttonText = "Loading..."
-    error = ""
+    updateButtonText()
+    clearMessages()
 
     try {
       const [tab] = await browser.tabs.query({ active: true, currentWindow: true })
 
       if (!tab.id) {
-        error = "No active tab found"
+        setErrorMessage("No active tab found.")
         return
       }
 
       if (!tab.url) {
-        error = "No URL found for current tab"
+        setErrorMessage("No URL found for the current tab.")
         return
       }
 
       currentUrl = tab.url
+      isValidHackerNewsUrl = checkIfHackerNewsUrl(tab.url)
 
-      // Always load cached summary for display, but don't return early
+      if (!isValidHackerNewsUrl) {
+        setErrorMessage("Open a Hacker News submission page before generating a summary.", "", "getComments")
+        return
+      }
+
       await loadCachedSummary(tab.url)
 
-      const contentResponse = await browser.tabs.sendMessage(tab.id, { action: "getComments" })
+      const contentResponse = await withTimeout(
+        browser.tabs.sendMessage(tab.id, { action: "getComments" }) as Promise<GetCommentsResponse>,
+        8000,
+        "Timed out while reading comments from the page. Reload the Hacker News tab and try again.",
+      )
 
-      if (contentResponse?.success && contentResponse.comments) {
+      if (contentResponse?.success && typeof contentResponse.comments === "string" && contentResponse.comments.trim()) {
         comments = contentResponse.comments
         console.log("Comments received:", contentResponse.comments)
 
@@ -148,32 +289,41 @@
         isGeneratingSummary = true
         await loadCurrentModel()
 
-        const backgroundResponse = await browser.runtime.sendMessage({
-          action: "generateSummary",
-          comments: contentResponse.comments,
-          url: tab.url,
-        })
+        const backgroundResponse = await withTimeout(
+          browser.runtime.sendMessage({
+            action: "generateSummary",
+            comments: contentResponse.comments,
+            url: tab.url,
+          }) as Promise<GenerateSummaryResponse>,
+          10000,
+          "Timed out while starting summary generation. Please try again.",
+        )
 
         if (!backgroundResponse?.success) {
-          isProcessingInBackground = false
-          isGeneratingSummary = false
-          isCancellingSummary = false
+          resetGenerationState()
           if (!backgroundResponse?.cancelled) {
-            error = backgroundResponse?.error || "Failed to generate summary"
+            setErrorMessage(
+              backgroundResponse?.error || "Failed to generate summary.",
+              backgroundResponse?.details,
+              "generateSummary",
+            )
           }
           return
         }
 
-        // Background script handles response via message listener, so we don't need to check here
-        // The summary will be updated through the 'summaryComplete' message
+        if (backgroundResponse.model) {
+          currentModelName = backgroundResponse.model
+          currentModelProvider = getModelProvider(backgroundResponse.model)
+        }
+
         console.log("Summary generation started in background")
-        // Don't reset loading states here - they will be reset when summaryComplete message arrives
       } else {
-        error = contentResponse?.error || "Failed to get comments"
+        setErrorMessage(contentResponse?.error || "Failed to get comments.", contentResponse?.details, "getComments")
         console.error("Error getting comments:", contentResponse?.error)
       }
     } catch (err) {
-      error = "Failed to communicate with content script"
+      resetGenerationState()
+      setErrorFromUnknown(err, "Failed to read comments or start summary generation.", "getComments")
       console.error("Error:", err)
     } finally {
       isLoading = false
@@ -187,19 +337,27 @@
     }
 
     isCancellingSummary = true
-    error = ""
+    clearMessages()
 
     try {
-      await browser.runtime.sendMessage({
-        action: "cancelSummaryGeneration",
-        url: currentUrl,
-      })
+      const response = await withTimeout(
+        browser.runtime.sendMessage({
+          action: "cancelSummaryGeneration",
+          url: currentUrl,
+        }) as Promise<GenerateSummaryResponse>,
+        5000,
+        "Timed out while cancelling summary generation.",
+      )
 
       await ongoingGenerationStore.setValue(null)
       isProcessingInBackground = false
       isGeneratingSummary = false
+
+      if (!response?.success && response?.error) {
+        warning = response.error
+      }
     } catch (err) {
-      error = "Failed to cancel summary generation"
+      setErrorFromUnknown(err, "Failed to cancel summary generation.", "cancelSummaryGeneration")
       console.error("Error cancelling summary generation:", err)
     } finally {
       isCancellingSummary = false
@@ -208,7 +366,9 @@
   }
 
   function openOptions() {
-    browser.runtime.openOptionsPage()
+    void browser.runtime.openOptionsPage().catch(err => {
+      setErrorFromUnknown(err, "Failed to open options page.")
+    })
   }
 
   function getCurrentModelLabel(): string {
@@ -221,6 +381,88 @@
 
   function getExtensionVersion(): string {
     return browser.runtime.getManifest().version
+  }
+
+  function handleSummaryComplete(message: RuntimeSummaryMessage) {
+    if (!message.summary?.trim()) {
+      resetGenerationState()
+      setErrorMessage("Summary generation completed, but the response was empty.")
+      updateButtonText()
+      return
+    }
+
+    summary = message.summary
+    summaryCreatedBy = message.model || currentModelName
+    summaryCreatedByProvider = message.provider || getModelProvider(summaryCreatedBy)
+    currentModelName = message.model || currentModelName
+    currentModelProvider = message.provider || getModelProvider(currentModelName)
+    warning = message.warning || ""
+    error = ""
+    errorDetails = ""
+    resetGenerationState()
+    updateButtonText()
+    console.log("Summary completed in background:", message.summary)
+  }
+
+  function resetGenerationState() {
+    isProcessingInBackground = false
+    isGeneratingSummary = false
+    isCancellingSummary = false
+  }
+
+  function clearMessages() {
+    error = ""
+    errorDetails = ""
+    warning = ""
+  }
+
+  function setErrorMessage(message: string, details = "", action?: LastSummaryError["action"]) {
+    error = message
+    errorDetails = details
+
+    if (action && currentUrl) {
+      void rememberLastSummaryError(action, message, details)
+    }
+  }
+
+  function setErrorFromUnknown(err: unknown, fallback: string, action?: LastSummaryError["action"]) {
+    error = getErrorMessage(err, fallback)
+    errorDetails = err instanceof Error ? err.stack || err.message : ""
+
+    if (action && currentUrl) {
+      void rememberLastSummaryError(action, error, errorDetails)
+    }
+  }
+
+  async function rememberLastSummaryError(action: LastSummaryError["action"], message: string, details = "") {
+    try {
+      await lastSummaryErrorStore.setValue({
+        url: currentUrl,
+        action,
+        message,
+        details,
+        timestamp: Date.now(),
+      })
+    } catch (err) {
+      console.warn("Failed to store popup error details:", err)
+    }
+  }
+
+  async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs)
+        }),
+      ])
+    } finally {
+      if (timer) {
+        clearTimeout(timer)
+      }
+    }
   }
 </script>
 
@@ -279,6 +521,20 @@
     <div class="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg">
       <p class="font-semibold">Error:</p>
       <p class="text-sm">{error}</p>
+      {#if errorDetails}
+        <details class="mt-2 text-xs">
+          <summary class="cursor-pointer font-medium">Details</summary>
+          <pre
+            class="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-red-50 p-2 text-[11px]">{errorDetails}</pre>
+        </details>
+      {/if}
+    </div>
+  {/if}
+
+  {#if warning}
+    <div class="mb-4 p-3 bg-yellow-100 border border-yellow-400 text-yellow-800 rounded-lg">
+      <p class="font-semibold">Notice:</p>
+      <p class="text-sm">{warning}</p>
     </div>
   {/if}
 

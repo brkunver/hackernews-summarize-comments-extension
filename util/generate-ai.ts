@@ -16,6 +16,7 @@ import {
   getProviderLabel,
 } from "./models"
 import { getAvailableProviders, getProviderApiKey, getProviderApiKeys, getProviderLanguageModel } from "./providers"
+import { getErrorMessage } from "./errors"
 
 export interface GenerateTextResult {
   text: string
@@ -45,7 +46,7 @@ export async function GenerateText(prompt: string, abortSignal?: AbortSignal) {
   const apiKeys = await getProviderApiKeys()
   const availableProviders = getAvailableProviders(apiKeys)
   const attemptedModels = getConfiguredModelChain(configuredModelChain, preferredModel)
-  const errors: unknown[] = []
+  const errors: { modelRef: string; error: unknown }[] = []
 
   if (availableProviders.length === 0) {
     const providerLabels = AI_PROVIDER_ORDER.map(getProviderLabel).join(", ")
@@ -102,13 +103,16 @@ export async function GenerateText(prompt: string, abortSignal?: AbortSignal) {
         throw new SummaryGenerationCancelledError()
       }
 
-      errors.push(error)
+      errors.push({ modelRef, error })
       console.warn(`AI model ${modelRef} failed, trying next configured model if available.`, error)
     }
   }
 
   const errorMessages = errors
-    .map(error => (error instanceof Error ? error.message : String(error)))
+    .map(
+      ({ modelRef, error }) =>
+        `${formatModelWithProvider(modelRef, getModelProvider(modelRef))}: ${getErrorMessage(error)}`,
+    )
     .filter(Boolean)
     .join(" | ")
 

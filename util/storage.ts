@@ -32,8 +32,10 @@ export const modelChainStore = storage.defineItem<string[]>("local:modelChain", 
   version: 1,
 })
 
+export const DEFAULT_MAX_COMMENTS = 100
+
 export const maxCommentsStore = storage.defineItem<number>("local:maxComments", {
-  fallback: 100,
+  fallback: DEFAULT_MAX_COMMENTS,
   version: 1,
 })
 
@@ -77,6 +79,19 @@ export interface OngoingGeneration {
 }
 
 export const ongoingGenerationStore = storage.defineItem<OngoingGeneration | null>("local:ongoingGeneration", {
+  fallback: null,
+  version: 1,
+})
+
+export interface LastSummaryError {
+  url: string
+  message: string
+  details?: string
+  action: "getComments" | "generateSummary" | "generationStatus" | "cancelSummaryGeneration"
+  timestamp: number
+}
+
+export const lastSummaryErrorStore = storage.defineItem<LastSummaryError | null>("local:lastSummaryError", {
   fallback: null,
   version: 1,
 })
