@@ -51,7 +51,13 @@
     errorHistory?: GenerationErrorHistoryItem[]
   }
 
+  interface FormattedErrorItem {
+    model: string
+    message: string
+  }
+
   const LAST_ERROR_DISPLAY_MS = 24 * 60 * 60 * 1000
+  const ALL_MODELS_FAILED_PREFIX = "All configured AI models failed: "
 
   let isLoading = $state(false)
   let buttonText = $state("Get Comments")
@@ -399,6 +405,40 @@
     return browser.runtime.getManifest().version
   }
 
+  function getErrorHeading(): string {
+    if (error.startsWith(ALL_MODELS_FAILED_PREFIX)) {
+      return "All configured AI models failed"
+    }
+
+    return "Error"
+  }
+
+  function getFormattedErrorItems(): FormattedErrorItem[] {
+    if (!error.startsWith(ALL_MODELS_FAILED_PREFIX)) {
+      return []
+    }
+
+    return error
+      .slice(ALL_MODELS_FAILED_PREFIX.length)
+      .split(" | ")
+      .map(item => {
+        const separatorIndex = item.indexOf(": ")
+
+        if (separatorIndex === -1) {
+          return {
+            model: "Unknown model",
+            message: item.trim(),
+          }
+        }
+
+        return {
+          model: item.slice(0, separatorIndex).trim(),
+          message: item.slice(separatorIndex + 2).trim(),
+        }
+      })
+      .filter(item => item.message !== "")
+  }
+
   function handleSummaryComplete(message: RuntimeSummaryMessage) {
     if (!message.summary?.trim()) {
       resetGenerationState()
@@ -484,7 +524,7 @@
   }
 </script>
 
-<main class="p-4 min-w-[430px] max-w-[620px]">
+<main class="p-4 min-w-107.5 max-w-155">
   <h1 class="text-2xl font-bold mb-4">HN Comments Summarizer</h1>
 
   <!-- Current Model Info -->
@@ -536,14 +576,29 @@
 
   <!-- Error Display -->
   {#if error}
+    {@const formattedErrorItems = getFormattedErrorItems()}
     <div class="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg">
-      <p class="font-semibold">Error:</p>
-      <p class="text-sm">{error}</p>
+      <p class="font-semibold">{getErrorHeading()}</p>
+      {#if formattedErrorItems.length > 0}
+        <ul class="mt-2 space-y-2 text-sm">
+          {#each formattedErrorItems as item}
+            <li class="flex gap-2">
+              <span class="mt-1.75 h-1.5 w-1.5 shrink-0 rounded bg-red-600"></span>
+              <span class="min-w-0">
+                <strong class="font-semibold text-red-900">{item.model}</strong>
+                <span class="block wrap-break-word">{item.message}</span>
+              </span>
+            </li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="mt-1 text-sm wrap-break-word">{error}</p>
+      {/if}
       {#if errorDetails}
         <details class="mt-2 text-xs">
           <summary class="cursor-pointer font-medium">Details</summary>
           <pre
-            class="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-red-50 p-2 text-[11px]">{errorDetails}</pre>
+            class="mt-2 max-h-32 overflow-auto whitespace-pre-wrap wrap-break-word rounded bg-red-50 p-2 text-[11px]">{errorDetails}</pre>
         </details>
       {/if}
     </div>
@@ -584,12 +639,12 @@
                 >{item.reason}</span
               >
             </div>
-            <p class="mt-1 break-words">{item.message}</p>
+            <p class="mt-1 wrap-break-word">{item.message}</p>
             {#if item.details}
               <details class="mt-1">
                 <summary class="cursor-pointer font-medium">Details</summary>
                 <pre
-                  class="mt-1 max-h-24 overflow-auto whitespace-pre-wrap break-words rounded bg-red-50 p-2 text-[11px]">{item.details}</pre>
+                  class="mt-1 max-h-24 overflow-auto whitespace-pre-wrap wrap-break-word rounded bg-red-50 p-2 text-[11px]">{item.details}</pre>
               </details>
             {/if}
           </div>
