@@ -7,7 +7,9 @@ import {
   modelStore,
   ongoingGenerationStore,
   savedSummariesStore,
+  type GenerationErrorHistoryItem,
   type LastSummaryError,
+  type OngoingGeneration,
 } from "@@/util/storage"
 
 type SendResponse = (response?: unknown) => void
@@ -96,6 +98,72 @@ export default defineBackground(() => {
     }
   }
 
+  async function updateOngoingGeneration(
+    url: string,
+    generationController: AbortController,
+    updates: Partial<Pick<OngoingGeneration, "model" | "errorHistory">>,
+  ) {
+    if (!isActiveGeneration(url, generationController)) {
+      return
+    }
+
+    try {
+      const ongoing = await ongoingGenerationStore.getValue()
+
+      if (!ongoing || ongoing.url !== url) {
+        return
+      }
+
+      await ongoingGenerationStore.setValue({
+        ...ongoing,
+        ...updates,
+        timestamp: Date.now(),
+      })
+
+      sendRuntimeMessage({
+        action: "generationUpdated",
+        url,
+        model: updates.model ?? ongoing.model,
+        errorHistory: updates.errorHistory ?? ongoing.errorHistory ?? [],
+      })
+    } catch (error) {
+      console.warn("Failed to update ongoing generation state.", error)
+    }
+  }
+
+  async function rememberGenerationAttemptError(
+    url: string,
+    generationController: AbortController,
+    errorItem: GenerationErrorHistoryItem,
+  ) {
+    if (!isActiveGeneration(url, generationController)) {
+      return
+    }
+
+    try {
+      const ongoing = await ongoingGenerationStore.getValue()
+
+      if (!ongoing || ongoing.url !== url) {
+        return
+      }
+
+      await ongoingGenerationStore.setValue({
+        ...ongoing,
+        errorHistory: [errorItem, ...(ongoing.errorHistory ?? [])].slice(0, 3),
+        timestamp: Date.now(),
+      })
+
+      sendRuntimeMessage({
+        action: "generationUpdated",
+        url,
+        model: ongoing.model,
+        errorHistory: [errorItem, ...(ongoing.errorHistory ?? [])].slice(0, 3),
+      })
+    } catch (error) {
+      console.warn("Failed to store generation attempt error.", error)
+    }
+  }
+
   async function saveSummary(url: string, summaryText: string, model: string, provider: string) {
     const savedSummaries = await savedSummariesStore.getValue()
     const filteredSummaries = savedSummaries.filter(item => item.id !== url)
@@ -114,7 +182,21 @@ export default defineBackground(() => {
 
   async function runSummaryGeneration(url: string, comments: string, generationController: AbortController) {
     try {
-      const summary = await GenerateText(comments, generationController.signal)
+      const summary = await GenerateText(comments, {
+        abortSignal: generationController.signal,
+        onModelStart: async modelRef => {
+          await updateOngoingGeneration(url, generationController, { model: modelRef })
+        },
+        onModelError: async error => {
+          await rememberGenerationAttemptError(url, generationController, {
+            model: error.modelRef,
+            message: error.message,
+            details: error.details,
+            reason: error.reason,
+            timestamp: Date.now(),
+          })
+        },
+      })
 
       if (!isActiveGeneration(url, generationController)) {
         return
@@ -286,6 +368,7 @@ export default defineBackground(() => {
         active: true,
         model: ongoing.model,
         timestamp: ongoing.timestamp,
+        errorHistory: ongoing.errorHistory ?? [],
       })
     } catch (error) {
       const errorInfo =

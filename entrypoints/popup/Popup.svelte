@@ -5,6 +5,7 @@
     modelChainStore,
     modelStore,
     ongoingGenerationStore,
+    type GenerationErrorHistoryItem,
     type LastSummaryError,
   } from "~/util/storage"
   import { formatModelWithProvider, getConfiguredModelChain, getModelProvider, type AiProvider } from "~/util/models"
@@ -35,6 +36,7 @@
     timestamp?: number
     error?: string
     details?: string
+    errorHistory?: GenerationErrorHistoryItem[]
   }
 
   interface RuntimeSummaryMessage {
@@ -46,9 +48,16 @@
     error?: string
     details?: string
     warning?: string
+    errorHistory?: GenerationErrorHistoryItem[]
+  }
+
+  interface FormattedErrorItem {
+    model: string
+    message: string
   }
 
   const LAST_ERROR_DISPLAY_MS = 24 * 60 * 60 * 1000
+  const ALL_MODELS_FAILED_PREFIX = "All configured AI models failed: "
 
   let isLoading = $state(false)
   let buttonText = $state("Get Comments")
@@ -66,6 +75,7 @@
   let summaryCreatedBy = $state("")
   let summaryCreatedByProvider = $state<AiProvider | null>(null)
   let isValidHackerNewsUrl = $state(false)
+  let generationErrorHistory = $state<GenerationErrorHistoryItem[]>([])
 
   function checkIfHackerNewsUrl(url: string): boolean {
     return url.includes("news.ycombinator.com/item?id=")
@@ -89,6 +99,16 @@
 
       if (message.action === "summaryComplete") {
         handleSummaryComplete(message)
+      }
+
+      if (message.action === "generationUpdated") {
+        if (message.model) {
+          currentModelName = message.model
+          currentModelProvider = getModelProvider(message.model)
+        }
+
+        generationErrorHistory = message.errorHistory ?? []
+        updateButtonText()
       }
 
       if (message.action === "summaryFailed") {
@@ -217,6 +237,7 @@
         isGeneratingSummary = true
         currentModelName = status.model
         currentModelProvider = getModelProvider(status.model)
+        generationErrorHistory = status.errorHistory ?? []
         updateButtonText()
         return true
       }
@@ -236,6 +257,7 @@
         isGeneratingSummary = true
         currentModelName = ongoing.model
         currentModelProvider = getModelProvider(ongoing.model)
+        generationErrorHistory = ongoing.errorHistory ?? []
         warning = "Could not confirm the background job status. If this stays stuck, cancel and try again."
         updateButtonText()
         return true
@@ -383,6 +405,40 @@
     return browser.runtime.getManifest().version
   }
 
+  function getErrorHeading(): string {
+    if (error.startsWith(ALL_MODELS_FAILED_PREFIX)) {
+      return "All configured AI models failed"
+    }
+
+    return "Error"
+  }
+
+  function getFormattedErrorItems(): FormattedErrorItem[] {
+    if (!error.startsWith(ALL_MODELS_FAILED_PREFIX)) {
+      return []
+    }
+
+    return error
+      .slice(ALL_MODELS_FAILED_PREFIX.length)
+      .split(" | ")
+      .map(item => {
+        const separatorIndex = item.indexOf(": ")
+
+        if (separatorIndex === -1) {
+          return {
+            model: "Unknown model",
+            message: item.trim(),
+          }
+        }
+
+        return {
+          model: item.slice(0, separatorIndex).trim(),
+          message: item.slice(separatorIndex + 2).trim(),
+        }
+      })
+      .filter(item => item.message !== "")
+  }
+
   function handleSummaryComplete(message: RuntimeSummaryMessage) {
     if (!message.summary?.trim()) {
       resetGenerationState()
@@ -408,12 +464,14 @@
     isProcessingInBackground = false
     isGeneratingSummary = false
     isCancellingSummary = false
+    generationErrorHistory = []
   }
 
   function clearMessages() {
     error = ""
     errorDetails = ""
     warning = ""
+    generationErrorHistory = []
   }
 
   function setErrorMessage(message: string, details = "", action?: LastSummaryError["action"]) {
@@ -466,7 +524,7 @@
   }
 </script>
 
-<main class="p-4 min-w-[350px] max-w-[500px]">
+<main class="p-4 min-w-107.5 max-w-155">
   <h1 class="text-2xl font-bold mb-4">HN Comments Summarizer</h1>
 
   <!-- Current Model Info -->
@@ -518,14 +576,29 @@
 
   <!-- Error Display -->
   {#if error}
+    {@const formattedErrorItems = getFormattedErrorItems()}
     <div class="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg">
-      <p class="font-semibold">Error:</p>
-      <p class="text-sm">{error}</p>
+      <p class="font-semibold">{getErrorHeading()}</p>
+      {#if formattedErrorItems.length > 0}
+        <ul class="mt-2 space-y-2 text-sm">
+          {#each formattedErrorItems as item}
+            <li class="flex gap-2">
+              <span class="mt-1.75 h-1.5 w-1.5 shrink-0 rounded bg-red-600"></span>
+              <span class="min-w-0">
+                <strong class="font-semibold text-red-900">{item.model}</strong>
+                <span class="block wrap-break-word">{item.message}</span>
+              </span>
+            </li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="mt-1 text-sm wrap-break-word">{error}</p>
+      {/if}
       {#if errorDetails}
         <details class="mt-2 text-xs">
           <summary class="cursor-pointer font-medium">Details</summary>
           <pre
-            class="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-red-50 p-2 text-[11px]">{errorDetails}</pre>
+            class="mt-2 max-h-32 overflow-auto whitespace-pre-wrap wrap-break-word rounded bg-red-50 p-2 text-[11px]">{errorDetails}</pre>
         </details>
       {/if}
     </div>
@@ -549,6 +622,34 @@
   {#if isGeneratingSummary && !isProcessingInBackground}
     <div class="mb-4 p-3 bg-blue-100 border border-blue-400 text-blue-700 rounded-lg">
       <p class="text-sm font-medium">Generating summary using {currentModelName ? getCurrentModelLabel() : "AI"}...</p>
+    </div>
+  {/if}
+
+  {#if (isGeneratingSummary || isProcessingInBackground) && generationErrorHistory.length > 0}
+    <div class="mb-4 p-3 bg-red-50 border border-red-400 text-red-700 rounded-lg">
+      <p class="font-semibold text-sm">Recent model errors</p>
+      <div class="mt-2 space-y-2">
+        {#each generationErrorHistory as item}
+          <div class="rounded border border-red-200 bg-white p-2 text-xs">
+            <div class="flex items-center justify-between gap-2">
+              <span class="font-medium text-red-900"
+                >{formatModelWithProvider(item.model, getModelProvider(item.model))}</span
+              >
+              <span class="shrink-0 rounded bg-red-100 px-2 py-1 text-[11px] font-medium text-red-700"
+                >{item.reason}</span
+              >
+            </div>
+            <p class="mt-1 wrap-break-word">{item.message}</p>
+            {#if item.details}
+              <details class="mt-1">
+                <summary class="cursor-pointer font-medium">Details</summary>
+                <pre
+                  class="mt-1 max-h-24 overflow-auto whitespace-pre-wrap wrap-break-word rounded bg-red-50 p-2 text-[11px]">{item.details}</pre>
+              </details>
+            {/if}
+          </div>
+        {/each}
+      </div>
     </div>
   {/if}
 
