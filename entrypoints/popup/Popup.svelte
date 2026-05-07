@@ -5,6 +5,7 @@
     modelChainStore,
     modelStore,
     ongoingGenerationStore,
+    type GenerationErrorHistoryItem,
     type LastSummaryError,
   } from "~/util/storage"
   import { formatModelWithProvider, getConfiguredModelChain, getModelProvider, type AiProvider } from "~/util/models"
@@ -35,6 +36,7 @@
     timestamp?: number
     error?: string
     details?: string
+    errorHistory?: GenerationErrorHistoryItem[]
   }
 
   interface RuntimeSummaryMessage {
@@ -46,6 +48,7 @@
     error?: string
     details?: string
     warning?: string
+    errorHistory?: GenerationErrorHistoryItem[]
   }
 
   const LAST_ERROR_DISPLAY_MS = 24 * 60 * 60 * 1000
@@ -66,6 +69,7 @@
   let summaryCreatedBy = $state("")
   let summaryCreatedByProvider = $state<AiProvider | null>(null)
   let isValidHackerNewsUrl = $state(false)
+  let generationErrorHistory = $state<GenerationErrorHistoryItem[]>([])
 
   function checkIfHackerNewsUrl(url: string): boolean {
     return url.includes("news.ycombinator.com/item?id=")
@@ -89,6 +93,16 @@
 
       if (message.action === "summaryComplete") {
         handleSummaryComplete(message)
+      }
+
+      if (message.action === "generationUpdated") {
+        if (message.model) {
+          currentModelName = message.model
+          currentModelProvider = getModelProvider(message.model)
+        }
+
+        generationErrorHistory = message.errorHistory ?? []
+        updateButtonText()
       }
 
       if (message.action === "summaryFailed") {
@@ -217,6 +231,7 @@
         isGeneratingSummary = true
         currentModelName = status.model
         currentModelProvider = getModelProvider(status.model)
+        generationErrorHistory = status.errorHistory ?? []
         updateButtonText()
         return true
       }
@@ -236,6 +251,7 @@
         isGeneratingSummary = true
         currentModelName = ongoing.model
         currentModelProvider = getModelProvider(ongoing.model)
+        generationErrorHistory = ongoing.errorHistory ?? []
         warning = "Could not confirm the background job status. If this stays stuck, cancel and try again."
         updateButtonText()
         return true
@@ -408,12 +424,14 @@
     isProcessingInBackground = false
     isGeneratingSummary = false
     isCancellingSummary = false
+    generationErrorHistory = []
   }
 
   function clearMessages() {
     error = ""
     errorDetails = ""
     warning = ""
+    generationErrorHistory = []
   }
 
   function setErrorMessage(message: string, details = "", action?: LastSummaryError["action"]) {
@@ -466,7 +484,7 @@
   }
 </script>
 
-<main class="p-4 min-w-[350px] max-w-[500px]">
+<main class="p-4 min-w-[430px] max-w-[620px]">
   <h1 class="text-2xl font-bold mb-4">HN Comments Summarizer</h1>
 
   <!-- Current Model Info -->
@@ -549,6 +567,34 @@
   {#if isGeneratingSummary && !isProcessingInBackground}
     <div class="mb-4 p-3 bg-blue-100 border border-blue-400 text-blue-700 rounded-lg">
       <p class="text-sm font-medium">Generating summary using {currentModelName ? getCurrentModelLabel() : "AI"}...</p>
+    </div>
+  {/if}
+
+  {#if (isGeneratingSummary || isProcessingInBackground) && generationErrorHistory.length > 0}
+    <div class="mb-4 p-3 bg-red-50 border border-red-400 text-red-700 rounded-lg">
+      <p class="font-semibold text-sm">Recent model errors</p>
+      <div class="mt-2 space-y-2">
+        {#each generationErrorHistory as item}
+          <div class="rounded border border-red-200 bg-white p-2 text-xs">
+            <div class="flex items-center justify-between gap-2">
+              <span class="font-medium text-red-900"
+                >{formatModelWithProvider(item.model, getModelProvider(item.model))}</span
+              >
+              <span class="shrink-0 rounded bg-red-100 px-2 py-1 text-[11px] font-medium text-red-700"
+                >{item.reason}</span
+              >
+            </div>
+            <p class="mt-1 break-words">{item.message}</p>
+            {#if item.details}
+              <details class="mt-1">
+                <summary class="cursor-pointer font-medium">Details</summary>
+                <pre
+                  class="mt-1 max-h-24 overflow-auto whitespace-pre-wrap break-words rounded bg-red-50 p-2 text-[11px]">{item.details}</pre>
+              </details>
+            {/if}
+          </div>
+        {/each}
+      </div>
     </div>
   {/if}
 

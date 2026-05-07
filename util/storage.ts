@@ -76,6 +76,15 @@ export interface OngoingGeneration {
   url: string
   model: string
   timestamp: number
+  errorHistory?: GenerationErrorHistoryItem[]
+}
+
+export interface GenerationErrorHistoryItem {
+  model: string
+  message: string
+  details?: string
+  reason: string
+  timestamp: number
 }
 
 export const ongoingGenerationStore = storage.defineItem<OngoingGeneration | null>("local:ongoingGeneration", {

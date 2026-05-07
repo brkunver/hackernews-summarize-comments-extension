@@ -16,13 +16,26 @@ import {
   getProviderLabel,
 } from "./models"
 import { getAvailableProviders, getProviderApiKey, getProviderApiKeys, getProviderLanguageModel } from "./providers"
-import { getErrorMessage } from "./errors"
+import { getErrorMessage, serializeError } from "./errors"
 
 export interface GenerateTextResult {
   text: string
   model: string
   provider: AiProvider
   attemptedModels: string[]
+}
+
+export interface GenerateTextModelError {
+  modelRef: string
+  message: string
+  details?: string
+  reason: string
+}
+
+export interface GenerateTextOptions {
+  abortSignal?: AbortSignal
+  onModelStart?: (modelRef: string) => Promise<void> | void
+  onModelError?: (error: GenerateTextModelError) => Promise<void> | void
 }
 
 export class SummaryGenerationCancelledError extends Error {
@@ -36,7 +49,68 @@ function normalizeTimeoutSeconds(timeoutSeconds: number): number {
   return Number.isFinite(timeoutSeconds) && timeoutSeconds > 0 ? timeoutSeconds : DEFAULT_SUMMARY_TIMEOUT_SECONDS
 }
 
-export async function GenerateText(prompt: string, abortSignal?: AbortSignal) {
+function classifyGenerationError(error: unknown): string {
+  const serializedError = serializeError(error)
+  const text = `${serializedError.name ?? ""} ${serializedError.message} ${serializedError.details ?? ""}`.toLowerCase()
+
+  if (
+    text.includes("rate limit") ||
+    text.includes("ratelimit") ||
+    text.includes("too many requests") ||
+    text.includes("429")
+  ) {
+    return "Rate limit"
+  }
+
+  if (
+    text.includes("token") ||
+    text.includes("context length") ||
+    text.includes("context window") ||
+    text.includes("maximum context") ||
+    text.includes("too large")
+  ) {
+    return "Token/context limit"
+  }
+
+  if (text.includes("timeout") || text.includes("timed out") || text.includes("aborterror")) {
+    return "Timeout"
+  }
+
+  if (
+    text.includes("api key") ||
+    text.includes("unauthorized") ||
+    text.includes("forbidden") ||
+    text.includes("auth") ||
+    text.includes("401") ||
+    text.includes("403")
+  ) {
+    return "API key/auth"
+  }
+
+  if (
+    text.includes("network") ||
+    text.includes("fetch failed") ||
+    text.includes("failed to fetch") ||
+    text.includes("internet") ||
+    text.includes("econn") ||
+    text.includes("enotfound")
+  ) {
+    return "Network"
+  }
+
+  if (text.includes("permission") || text.includes("permissions")) {
+    return "Extension permission"
+  }
+
+  if (text.includes("empty summary")) {
+    return "Empty response"
+  }
+
+  return "Provider error"
+}
+
+export async function GenerateText(prompt: string, options: GenerateTextOptions = {}) {
+  const { abortSignal, onModelError, onModelStart } = options
   const [configuredModelChain, preferredModel] = await Promise.all([modelChainStore.getValue(), modelStore.getValue()])
   const [systemPrompt, configuredTimeoutSeconds] = await Promise.all([
     systemPromptStore.getValue(),
@@ -62,6 +136,8 @@ export async function GenerateText(prompt: string, abortSignal?: AbortSignal) {
       if (abortSignal?.aborted) {
         throw new SummaryGenerationCancelledError()
       }
+
+      await onModelStart?.(modelRef)
 
       const provider = getModelProvider(modelRef)
       const model = getModelId(modelRef)
@@ -104,6 +180,13 @@ export async function GenerateText(prompt: string, abortSignal?: AbortSignal) {
       }
 
       errors.push({ modelRef, error })
+      const errorInfo = serializeError(error)
+      await onModelError?.({
+        modelRef,
+        message: errorInfo.message,
+        details: errorInfo.details,
+        reason: classifyGenerationError(error),
+      })
       console.warn(`AI model ${modelRef} failed, trying next configured model if available.`, error)
     }
   }
