@@ -8,6 +8,5 @@
   "endOfLine": "auto",
   "jsxSingleQuote": false,
   "bracketSameLine": false,
-  "arrowParens": "avoid",
-  "plugins": ["prettier-plugin-svelte"]
+  "arrowParens": "avoid"
 }

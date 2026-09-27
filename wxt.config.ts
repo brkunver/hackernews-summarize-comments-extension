@@ -36,7 +36,7 @@ export default defineConfig({
       }
     },
   },
-  modules: ["@wxt-dev/module-svelte"],
+  modules: ["@wxt-dev/module-solid"],
   vite: () => ({
     plugins: [tailwindcss()],
   }),

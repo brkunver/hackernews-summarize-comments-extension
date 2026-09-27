@@ -2,7 +2,7 @@
   "name": "hackernews-summarize-comments",
   "description": "Summarize hackernews comments using AI",
   "private": true,
-  "version": "4.0.0",
+  "version": "4.1.0",
   "type": "module",
   "scripts": {
     "dev": "wxt",
@@ -15,20 +15,15 @@
     "zip:firefox": "wxt zip -b firefox",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "check": "tsc --noEmit",
     "postinstall": "wxt prepare",
     "manager": "node manager.cjs pnpm"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.4",
-    "@tsconfig/svelte": "^5.0.8",
-    "@wxt-dev/module-svelte": "^2.0.5",
+    "@wxt-dev/module-solid": "^1.1.4",
     "prettier": "^3.8.3",
-    "prettier-plugin-svelte": "^3.5.1",
-    "svelte": "5.57.1",
-    "svelte-check": "4.7.6",
     "tailwindcss": "^4.2.4",
-    "tslib": "^2.8.1",
     "typescript": "^5",
     "wxt": "^0.21.4"
   },

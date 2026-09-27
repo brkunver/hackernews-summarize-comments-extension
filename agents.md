@@ -21,12 +21,12 @@ Entrypoint-specific options defined in your entrypoints
 Your extension's manifest.json will be output to .output/{target}/manifest.json when running wxt build.
 
 - this extension should work on hackernews submission page
-- this project uses svelte 5 for frontend
+- this project uses solid-js for frontend
 - this extension aims manifest v3
 - this project uses tailwindcss v4 for styling.
 - this project uses typescript for development.
 - this project uses prettier for code formatting.
 - this project uses vite.
 - this project uses BUN package manager,
-- when using svelte, use modern latest svelte 5 runes syntax.
+- when using solid, use solid signals: createSignal/createStore for state, createMemo for derived values, and <For>/<Show> instead of .map/ternaries in JSX.
 - I should have a .prettierrc.json file in the root directory. please also follow rules on that.
