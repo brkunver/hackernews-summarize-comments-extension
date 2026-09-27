@@ -1,13 +1,19 @@
 <script lang="ts">
   import {
     DEFAULT_MAX_COMMENTS,
+    DEFAULT_MAX_COMMENT_DEPTH,
+    DEFAULT_RANDOM_COMMENT_SELECTION,
     DEFAULT_SUMMARY_TIMEOUT_SECONDS,
+    MAX_COMMENT_DEPTH_LIMIT,
+    customGoogleModelsStore,
+    maxCommentDepthStore,
+    maxCommentsStore,
     modelChainStore,
     modelStore,
+    randomCommentSelectionStore,
+    savedSummariesStore,
     systemPromptStore,
     timeoutStore,
-    savedSummariesStore,
-    maxCommentsStore,
     type SavedSummaryV2,
   } from "~/util/storage"
   import { getErrorMessage } from "~/util/errors"
@@ -17,7 +23,9 @@
     getAvailableModelRefs,
     getConfiguredModelChain,
     getModelProvider,
+    normalizeCustomGoogleModels,
     normalizeModelChain,
+    sanitizeCustomGoogleModel,
     type AiProvider,
   } from "~/util/models"
   import {
@@ -32,13 +40,18 @@
   let selectedModelChain = $state<string[]>(Array(MODEL_CHAIN_LENGTH).fill(""))
   let systemPrompt = $state("")
   let maxComments = $state(100)
+  let randomSelection = $state(DEFAULT_RANDOM_COMMENT_SELECTION)
+  let maxDepth = $state(DEFAULT_MAX_COMMENT_DEPTH)
+  let customGoogleModels = $state<string[]>([])
+  let newCustomModel = $state("")
+  let customModelError = $state("")
   let timeout = $state(DEFAULT_SUMMARY_TIMEOUT_SECONDS)
   let isLoading = $state(false)
   let saveMessage = $state("")
   let isEditingPrompt = $state(false)
   let cachedSummaries = $state<SavedSummaryV2[]>([])
 
-  const availableModels = getAvailableModelRefs()
+  const availableModels = $derived(getAvailableModelRefs(customGoogleModels))
   const modelSlots = Array.from({ length: MODEL_CHAIN_LENGTH }, (_, index) => index)
 
   // Load values from storage on component mount
@@ -46,9 +59,18 @@
     try {
       apiKeys = await getProviderApiKeys()
       const [configuredModelChain, legacyModel] = await Promise.all([modelChainStore.getValue(), modelStore.getValue()])
-      selectedModelChain = padModelChain(getConfiguredModelChain(configuredModelChain, legacyModel))
+      const storedCustomModels = normalizeCustomGoogleModels(await customGoogleModelsStore.getValue())
+      customGoogleModels = storedCustomModels
+      const allowedModelRefs = new Set(getAvailableModelRefs(storedCustomModels))
+      selectedModelChain = padModelChain(
+        getConfiguredModelChain(configuredModelChain, legacyModel, storedCustomModels).filter(model =>
+          allowedModelRefs.has(model),
+        ),
+      )
       systemPrompt = await systemPromptStore.getValue()
       maxComments = normalizeMaxComments(await maxCommentsStore.getValue())
+      randomSelection = (await randomCommentSelectionStore.getValue()) ?? DEFAULT_RANDOM_COMMENT_SELECTION
+      maxDepth = normalizeMaxDepth(await maxCommentDepthStore.getValue())
       timeout = await timeoutStore.getValue()
       cachedSummaries = await savedSummariesStore.getValue()
     } catch (error) {
@@ -63,19 +85,30 @@
     saveMessage = ""
 
     try {
-      const selectableModels = availableModels.filter(isModelSelectable)
-      const modelChainToSave = normalizeModelChain(selectedModelChain.filter(isModelSelectable))
+      const normalizedCustomModels = normalizeCustomGoogleModels(customGoogleModels)
+      customGoogleModels = normalizedCustomModels
+      const allowedModelRefs = new Set(getAvailableModelRefs(normalizedCustomModels))
+      const selectableModels = getAvailableModelRefs(normalizedCustomModels).filter(isModelSelectable)
+      const modelChainToSave = normalizeModelChain(
+        selectedModelChain.filter(model => allowedModelRefs.has(model) && isModelSelectable(model)),
+        normalizedCustomModels,
+      )
       const fallbackModel = selectableModels[0]
       const savedModelChain = modelChainToSave.length > 0 ? modelChainToSave : fallbackModel ? [fallbackModel] : []
 
       await setProviderApiKeys(apiKeys)
       await systemPromptStore.setValue(systemPrompt)
       await maxCommentsStore.setValue(normalizeMaxComments(maxComments))
+      await randomCommentSelectionStore.setValue(randomSelection)
+      await maxCommentDepthStore.setValue(normalizeMaxDepth(maxDepth))
+      await customGoogleModelsStore.setValue(normalizedCustomModels)
       await timeoutStore.setValue(normalizeTimeout(timeout))
       await modelChainStore.setValue(savedModelChain)
       selectedModelChain = padModelChain(savedModelChain)
       maxComments = normalizeMaxComments(maxComments)
-      timeout = normalizeTimeout(timeout)
+      maxDepth = normalizeMaxDepth(maxDepth)
+      newCustomModel = ""
+      customModelError = ""
 
       if (savedModelChain[0]) {
         await modelStore.setValue(savedModelChain[0])
@@ -150,6 +183,40 @@
     }
 
     return Math.floor(value)
+  }
+
+  function normalizeMaxDepth(value: number): number {
+    if (!Number.isFinite(value)) {
+      return DEFAULT_MAX_COMMENT_DEPTH
+    }
+
+    if (value <= 0) {
+      return value === 0 ? 0 : -1
+    }
+
+    return Math.min(Math.floor(value), MAX_COMMENT_DEPTH_LIMIT)
+  }
+
+  function addCustomModel() {
+    const sanitized = sanitizeCustomGoogleModel(newCustomModel)
+
+    if (sanitized === null) {
+      customModelError = "Enter a valid Google model id (letters, numbers, ., _, -)."
+      return
+    }
+
+    if (customGoogleModels.includes(sanitized)) {
+      customModelError = "This model is already in the list."
+      return
+    }
+
+    customGoogleModels = normalizeCustomGoogleModels([...customGoogleModels, sanitized])
+    newCustomModel = ""
+    customModelError = ""
+  }
+
+  function removeCustomModel(model: string) {
+    customGoogleModels = customGoogleModels.filter(item => item !== model)
   }
 
   function isModelSelectable(model: string): boolean {
@@ -263,6 +330,56 @@
         </p>
       </div>
 
+      <!-- Custom Google Models -->
+      <div>
+        <h2 class="text-sm font-medium">Custom Google Models</h2>
+        <p class="mt-2 text-sm text-gray-400">
+          Add extra Google model ids as plain strings (for example: gemini-flash-lite-3.5). They appear in the fallback
+          lists above once saved.
+        </p>
+
+        <div class="mt-3 flex gap-2">
+          <input
+            id="newCustomGoogleModel"
+            type="text"
+            bind:value={newCustomModel}
+            placeholder="gemini-flash-lite-3.5"
+            class="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg
+            focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+          <button
+            type="button"
+            onclick={addCustomModel}
+            class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+          >
+            Add
+          </button>
+        </div>
+
+        {#if customModelError}
+          <p class="mt-2 text-sm text-red-400">{customModelError}</p>
+        {/if}
+
+        {#if customGoogleModels.length > 0}
+          <ul class="mt-3 space-y-2">
+            {#each customGoogleModels as model}
+              <li class="flex items-center justify-between px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg">
+                <span class="text-sm font-mono">{model}</span>
+                <button
+                  type="button"
+                  onclick={() => removeCustomModel(model)}
+                  class="px-2 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
+                >
+                  Delete
+                </button>
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <p class="mt-3 text-sm text-gray-400">No custom Google models added yet.</p>
+        {/if}
+      </div>
+
       <!-- Max Comments -->
       <div>
         <label for="maxComments" class="block text-sm font-medium mb-2"> Max Comments </label>
@@ -276,6 +393,33 @@
         />
         <p class="mt-2 text-sm text-gray-400">
           Maximum number of comments to process. Enter 0 or -1 for no limit. Default: {DEFAULT_MAX_COMMENTS}
+        </p>
+
+        <label class="mt-3 flex items-center gap-2 text-sm text-gray-300">
+          <input type="checkbox" bind:checked={randomSelection} class="h-4 w-4 accent-blue-500" />
+          Select comments randomly when the total exceeds the maximum
+        </label>
+        <p class="mt-2 text-sm text-gray-400">
+          When enabled (default), exceeding comments are randomly sampled. When disabled, the first comments in page
+          order are used.
+        </p>
+      </div>
+
+      <!-- Max Depth -->
+      <div>
+        <label for="maxDepth" class="block text-sm font-medium mb-2"> Max Comment Depth </label>
+        <input
+          id="maxDepth"
+          type="number"
+          bind:value={maxDepth}
+          min="-1"
+          max={MAX_COMMENT_DEPTH_LIMIT}
+          class="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg
+          focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+        <p class="mt-2 text-sm text-gray-400">
+          Depth 1 means top-level comments only, depth 2 includes direct replies. Enter 0 or -1 for no depth limit (max {MAX_COMMENT_DEPTH_LIMIT}).
+          Default: {DEFAULT_MAX_COMMENT_DEPTH}
         </p>
       </div>
 

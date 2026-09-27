@@ -2,6 +2,7 @@ import { GenerateText, SummaryGenerationCancelledError } from "@@/util/generate-
 import { getConfiguredModelChain } from "@@/util/models"
 import { getErrorMessage, serializeError } from "@@/util/errors"
 import {
+  customGoogleModelsStore,
   lastSummaryErrorStore,
   modelChainStore,
   modelStore,
@@ -46,9 +47,13 @@ export default defineBackground(() => {
   }
 
   async function getCurrentModel(): Promise<string> {
-    const [configuredModelChain, legacyModel] = await Promise.all([modelChainStore.getValue(), modelStore.getValue()])
+    const [configuredModelChain, legacyModel, customGoogleModels] = await Promise.all([
+      modelChainStore.getValue(),
+      modelStore.getValue(),
+      customGoogleModelsStore.getValue(),
+    ])
 
-    return getConfiguredModelChain(configuredModelChain, legacyModel)[0] ?? legacyModel
+    return getConfiguredModelChain(configuredModelChain, legacyModel, customGoogleModels)[0] ?? legacyModel
   }
 
   async function clearOngoingGenerationIfActive(url: string, generationController: AbortController) {

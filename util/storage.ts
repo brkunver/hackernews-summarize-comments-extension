@@ -39,6 +39,26 @@ export const maxCommentsStore = storage.defineItem<number>("local:maxComments", 
   version: 1,
 })
 
+export const DEFAULT_RANDOM_COMMENT_SELECTION = true
+
+export const randomCommentSelectionStore = storage.defineItem<boolean>("local:randomCommentSelection", {
+  fallback: DEFAULT_RANDOM_COMMENT_SELECTION,
+  version: 1,
+})
+
+export const DEFAULT_MAX_COMMENT_DEPTH = 2
+export const MAX_COMMENT_DEPTH_LIMIT = 20
+
+export const maxCommentDepthStore = storage.defineItem<number>("local:maxCommentDepth", {
+  fallback: DEFAULT_MAX_COMMENT_DEPTH,
+  version: 1,
+})
+
+export const customGoogleModelsStore = storage.defineItem<string[]>("local:customGoogleModels", {
+  fallback: [],
+  version: 1,
+})
+
 export const DEFAULT_SUMMARY_TIMEOUT_SECONDS = 10
 
 export const timeoutStore = storage.defineItem<number>("sync:timeout", {

@@ -1,5 +1,6 @@
 <script lang="ts">
   import {
+    customGoogleModelsStore,
     lastSummaryErrorStore,
     savedSummariesStore,
     modelChainStore,
@@ -82,8 +83,12 @@
   }
 
   async function loadCurrentModel() {
-    const [configuredModelChain, legacyModel] = await Promise.all([modelChainStore.getValue(), modelStore.getValue()])
-    const currentModel = getConfiguredModelChain(configuredModelChain, legacyModel)[0] ?? ""
+    const [configuredModelChain, legacyModel, customGoogleModels] = await Promise.all([
+      modelChainStore.getValue(),
+      modelStore.getValue(),
+      customGoogleModelsStore.getValue(),
+    ])
+    const currentModel = getConfiguredModelChain(configuredModelChain, legacyModel, customGoogleModels)[0] ?? ""
 
     currentModelName = currentModel
     currentModelProvider = getModelProvider(currentModel)

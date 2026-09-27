@@ -1,5 +1,6 @@
 import {
   DEFAULT_SUMMARY_TIMEOUT_SECONDS,
+  customGoogleModelsStore,
   modelChainStore,
   modelStore,
   systemPromptStore,
@@ -111,7 +112,11 @@ function classifyGenerationError(error: unknown): string {
 
 export async function GenerateText(prompt: string, options: GenerateTextOptions = {}) {
   const { abortSignal, onModelError, onModelStart } = options
-  const [configuredModelChain, preferredModel] = await Promise.all([modelChainStore.getValue(), modelStore.getValue()])
+  const [configuredModelChain, preferredModel, customGoogleModels] = await Promise.all([
+    modelChainStore.getValue(),
+    modelStore.getValue(),
+    customGoogleModelsStore.getValue(),
+  ])
   const [systemPrompt, configuredTimeoutSeconds] = await Promise.all([
     systemPromptStore.getValue(),
     timeoutStore.getValue(),
@@ -119,7 +124,7 @@ export async function GenerateText(prompt: string, options: GenerateTextOptions 
   const timeoutMs = normalizeTimeoutSeconds(configuredTimeoutSeconds) * 1000
   const apiKeys = await getProviderApiKeys()
   const availableProviders = getAvailableProviders(apiKeys)
-  const attemptedModels = getConfiguredModelChain(configuredModelChain, preferredModel)
+  const attemptedModels = getConfiguredModelChain(configuredModelChain, preferredModel, customGoogleModels)
   const errors: { modelRef: string; error: unknown }[] = []
 
   if (availableProviders.length === 0) {

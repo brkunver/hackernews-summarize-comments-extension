@@ -19,6 +19,50 @@ export const GOOGLE_AI_MODELS = [
   "gemma-3-27b-it",
 ] as const
 
+const CUSTOM_GOOGLE_MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+export const MAX_CUSTOM_GOOGLE_MODEL_LENGTH = 128
+
+export function sanitizeCustomGoogleModel(value: string): string | null {
+  const trimmed = value.trim()
+
+  if (trimmed === "" || trimmed.length > MAX_CUSTOM_GOOGLE_MODEL_LENGTH) {
+    return null
+  }
+
+  if (!CUSTOM_GOOGLE_MODEL_PATTERN.test(trimmed)) {
+    return null
+  }
+
+  return trimmed
+}
+
+export function normalizeCustomGoogleModels(values: readonly unknown[]): string[] {
+  const seen = new Set<string>()
+  const normalized: string[] = []
+  const builtin = new Set<string>(GOOGLE_AI_MODELS)
+
+  for (const value of values) {
+    if (typeof value !== "string") {
+      continue
+    }
+
+    const sanitized = sanitizeCustomGoogleModel(value)
+
+    if (sanitized === null || builtin.has(sanitized) || seen.has(sanitized)) {
+      continue
+    }
+
+    seen.add(sanitized)
+    normalized.push(sanitized)
+  }
+
+  return normalized
+}
+
+export function getGoogleModelIds(customGoogleModels: readonly string[] = []): string[] {
+  return [...GOOGLE_AI_MODELS, ...normalizeCustomGoogleModels(customGoogleModels)]
+}
+
 export const AI_PROVIDER_LABELS = {
   google: "Google",
   groq: "Groq",
@@ -50,7 +94,10 @@ export function createModelRef(provider: AiProvider, model: string): AiModelRef 
   return `${provider}${MODEL_REF_SEPARATOR}${model}`
 }
 
-export function parseModelRef(modelRef: string): { provider: AiProvider; model: string } | null {
+export function parseModelRef(
+  modelRef: string,
+  customGoogleModels: readonly string[] = [],
+): { provider: AiProvider; model: string } | null {
   const separatorIndex = modelRef.indexOf(MODEL_REF_SEPARATOR)
 
   if (separatorIndex > 0) {
@@ -71,6 +118,15 @@ export function parseModelRef(modelRef: string): { provider: AiProvider; model: 
     return {
       provider: legacyProvider,
       model: modelRef,
+    }
+  }
+
+  const sanitizedCustom = sanitizeCustomGoogleModel(modelRef)
+
+  if (sanitizedCustom !== null && normalizeCustomGoogleModels(customGoogleModels).includes(sanitizedCustom)) {
+    return {
+      provider: "google",
+      model: sanitizedCustom,
     }
   }
 
@@ -96,26 +152,36 @@ export function formatModelWithProvider(
   return `${getProviderLabel(provider)} - ${getModelId(modelRef)}`
 }
 
-export function getModelsForAvailableProviders(availableProviders: AiProvider[]): string[] {
+export function getModelsForAvailableProviders(
+  availableProviders: AiProvider[],
+  customGoogleModels: readonly string[] = [],
+): string[] {
   const providers = new Set(availableProviders)
-  return getAvailableModelRefs().filter(modelRef => {
+  return getAvailableModelRefs(customGoogleModels).filter(modelRef => {
     const provider = getModelProvider(modelRef)
     return provider !== null && providers.has(provider)
   })
 }
 
-export function getAvailableModelRefs(): string[] {
-  return AI_PROVIDER_ORDER.flatMap(provider =>
-    AI_PROVIDER_MODELS[provider].map(model => createModelRef(provider, model)),
-  )
+export function getAvailableModelRefs(customGoogleModels: readonly string[] = []): string[] {
+  const googleModels = getGoogleModelIds(customGoogleModels).map(model => createModelRef("google", model))
+
+  return [
+    ...googleModels,
+    ...AI_PROVIDER_MODELS.groq.map(model => createModelRef("groq", model)),
+    ...AI_PROVIDER_MODELS.cerebras.map(model => createModelRef("cerebras", model)),
+  ]
 }
 
-export function normalizeModelChain(modelRefs: readonly string[]): string[] {
+export function normalizeModelChain(
+  modelRefs: readonly string[],
+  customGoogleModels: readonly string[] = [],
+): string[] {
   const seenModels = new Set<string>()
   const normalizedModels: string[] = []
 
   for (const modelRef of modelRefs) {
-    const parsedModel = parseModelRef(modelRef.trim())
+    const parsedModel = parseModelRef(modelRef.trim(), customGoogleModels)
 
     if (parsedModel === null) {
       continue
@@ -141,12 +207,13 @@ export function normalizeModelChain(modelRefs: readonly string[]): string[] {
 export function getConfiguredModelChain(
   configuredModelChain: readonly string[],
   legacyPreferredModel: string,
+  customGoogleModels: readonly string[] = [],
 ): string[] {
-  const modelChain = normalizeModelChain(configuredModelChain)
+  const modelChain = normalizeModelChain(configuredModelChain, customGoogleModels)
 
   if (modelChain.length > 0) {
     return modelChain
   }
 
-  return normalizeModelChain([legacyPreferredModel])
+  return normalizeModelChain([legacyPreferredModel], customGoogleModels)
 }
