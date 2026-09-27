@@ -11,6 +11,9 @@ export default defineConfig({
     name: "Hackernews Summarize Comments",
     description: "Summarize comments on Hackernews submission page using AI",
     permissions: ["storage", "tabs"],
+    // Needed to fetch the linked story article for "Generate Summary with Context".
+    // The fetch is best-effort: if the site blocks it, only the story link is sent to the AI.
+    host_permissions: ["http://*/*", "https://*/*"],
     browser_specific_settings: {
       gecko: {
         id: "hackernews-summarize-comments@kunver.com",

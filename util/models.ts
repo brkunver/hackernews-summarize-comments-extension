@@ -59,8 +59,36 @@ export function normalizeCustomGoogleModels(values: readonly unknown[]): string[
   return normalized
 }
 
-export function getGoogleModelIds(customGoogleModels: readonly string[] = []): string[] {
-  return [...GOOGLE_AI_MODELS, ...normalizeCustomGoogleModels(customGoogleModels)]
+export function getGoogleModelIds(
+  customGoogleModels: readonly string[] = [],
+  hiddenGoogleModels: readonly string[] = [],
+): string[] {
+  const hidden = new Set(normalizeHiddenGoogleModels(hiddenGoogleModels))
+
+  return [...GOOGLE_AI_MODELS.filter(model => !hidden.has(model)), ...normalizeCustomGoogleModels(customGoogleModels)]
+}
+
+export function normalizeHiddenGoogleModels(values: readonly unknown[]): string[] {
+  const builtin = new Set<string>(GOOGLE_AI_MODELS)
+  const seen = new Set<string>()
+  const normalized: string[] = []
+
+  for (const value of values) {
+    if (typeof value !== "string") {
+      continue
+    }
+
+    const trimmed = value.trim()
+
+    if (!builtin.has(trimmed) || seen.has(trimmed)) {
+      continue
+    }
+
+    seen.add(trimmed)
+    normalized.push(trimmed)
+  }
+
+  return normalized
 }
 
 export const AI_PROVIDER_LABELS = {
@@ -155,16 +183,22 @@ export function formatModelWithProvider(
 export function getModelsForAvailableProviders(
   availableProviders: AiProvider[],
   customGoogleModels: readonly string[] = [],
+  hiddenGoogleModels: readonly string[] = [],
 ): string[] {
   const providers = new Set(availableProviders)
-  return getAvailableModelRefs(customGoogleModels).filter(modelRef => {
+  return getAvailableModelRefs(customGoogleModels, hiddenGoogleModels).filter(modelRef => {
     const provider = getModelProvider(modelRef)
     return provider !== null && providers.has(provider)
   })
 }
 
-export function getAvailableModelRefs(customGoogleModels: readonly string[] = []): string[] {
-  const googleModels = getGoogleModelIds(customGoogleModels).map(model => createModelRef("google", model))
+export function getAvailableModelRefs(
+  customGoogleModels: readonly string[] = [],
+  hiddenGoogleModels: readonly string[] = [],
+): string[] {
+  const googleModels = getGoogleModelIds(customGoogleModels, hiddenGoogleModels).map(model =>
+    createModelRef("google", model),
+  )
 
   return [
     ...googleModels,
@@ -176,14 +210,20 @@ export function getAvailableModelRefs(customGoogleModels: readonly string[] = []
 export function normalizeModelChain(
   modelRefs: readonly string[],
   customGoogleModels: readonly string[] = [],
+  hiddenGoogleModels: readonly string[] = [],
 ): string[] {
   const seenModels = new Set<string>()
   const normalizedModels: string[] = []
+  const hiddenGoogle = new Set(normalizeHiddenGoogleModels(hiddenGoogleModels))
 
   for (const modelRef of modelRefs) {
     const parsedModel = parseModelRef(modelRef.trim(), customGoogleModels)
 
     if (parsedModel === null) {
+      continue
+    }
+
+    if (parsedModel.provider === "google" && hiddenGoogle.has(parsedModel.model)) {
       continue
     }
 
@@ -208,12 +248,13 @@ export function getConfiguredModelChain(
   configuredModelChain: readonly string[],
   legacyPreferredModel: string,
   customGoogleModels: readonly string[] = [],
+  hiddenGoogleModels: readonly string[] = [],
 ): string[] {
-  const modelChain = normalizeModelChain(configuredModelChain, customGoogleModels)
+  const modelChain = normalizeModelChain(configuredModelChain, customGoogleModels, hiddenGoogleModels)
 
   if (modelChain.length > 0) {
     return modelChain
   }
 
-  return normalizeModelChain([legacyPreferredModel], customGoogleModels)
+  return normalizeModelChain([legacyPreferredModel], customGoogleModels, hiddenGoogleModels)
 }

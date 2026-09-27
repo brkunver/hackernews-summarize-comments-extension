@@ -2,7 +2,9 @@ import { GenerateText, SummaryGenerationCancelledError } from "@@/util/generate-
 import { getConfiguredModelChain } from "@@/util/models"
 import { getErrorMessage, serializeError } from "@@/util/errors"
 import {
+  contextSystemPromptStore,
   customGoogleModelsStore,
+  hiddenGoogleModelsStore,
   lastSummaryErrorStore,
   modelChainStore,
   modelStore,
@@ -19,6 +21,18 @@ interface RuntimeMessage {
   action?: string
   comments?: unknown
   url?: unknown
+  withContext?: unknown
+  storyTitle?: unknown
+  storyUrl?: unknown
+  storyExcerpt?: unknown
+  storyExcerptSkipped?: unknown
+}
+
+interface SummaryJob {
+  prompt: string
+  systemPrompt?: string
+  withContext: boolean
+  warning?: string
 }
 
 const ONGOING_GENERATION_TTL_MS = 5 * 60 * 1000
@@ -47,13 +61,17 @@ export default defineBackground(() => {
   }
 
   async function getCurrentModel(): Promise<string> {
-    const [configuredModelChain, legacyModel, customGoogleModels] = await Promise.all([
+    const [configuredModelChain, legacyModel, customGoogleModels, hiddenGoogleModels] = await Promise.all([
       modelChainStore.getValue(),
       modelStore.getValue(),
       customGoogleModelsStore.getValue(),
+      hiddenGoogleModelsStore.getValue(),
     ])
 
-    return getConfiguredModelChain(configuredModelChain, legacyModel, customGoogleModels)[0] ?? legacyModel
+    return (
+      getConfiguredModelChain(configuredModelChain, legacyModel, customGoogleModels, hiddenGoogleModels)[0] ??
+      legacyModel
+    )
   }
 
   async function clearOngoingGenerationIfActive(url: string, generationController: AbortController) {
@@ -169,7 +187,7 @@ export default defineBackground(() => {
     }
   }
 
-  async function saveSummary(url: string, summaryText: string, model: string, provider: string) {
+  async function saveSummary(url: string, summaryText: string, model: string, provider: string, withContext: boolean) {
     const savedSummaries = await savedSummariesStore.getValue()
     const filteredSummaries = savedSummaries.filter(item => item.id !== url)
     const updatedSummaries = [
@@ -179,16 +197,91 @@ export default defineBackground(() => {
         summary: summaryText,
         createdBy: model,
         provider,
+        withContext,
       },
     ]
 
     await savedSummariesStore.setValue(updatedSummaries)
   }
 
-  async function runSummaryGeneration(url: string, comments: string, generationController: AbortController) {
+  function buildSummaryJob(
+    comments: string,
+    withContext: boolean,
+    storyTitle: string,
+    storyUrl: string,
+    storyExcerpt: string,
+    storyExcerptSkipped: boolean,
+    contextSystemPrompt: string,
+  ): SummaryJob {
+    const title = storyTitle.trim()
+    const link = storyUrl.trim()
+    const excerpt = storyExcerpt.trim()
+
+    if (!withContext || (title === "" && link === "")) {
+      return {
+        prompt: comments,
+        withContext: false,
+        warning:
+          withContext && title === "" && link === ""
+            ? "Story link could not be found on the page, generated without story context."
+            : undefined,
+      }
+    }
+
+    let excerptBlock: string
+    let warning: string | undefined
+
+    if (excerpt !== "") {
+      excerptBlock = `\n\nStory article excerpt (fetched from the URL, may be incomplete):\n${excerpt}`
+    } else {
+      excerptBlock = `\n\n[Note: Only the story title is available locally. If you can access the URL above, briefly summarize what it is about. If you cannot access it, say so in one short sentence and use only the title plus the comments below.]`
+
+      if (!storyExcerptSkipped) {
+        warning =
+          "Story article could not be fetched locally (likely paywall or bot protection); the AI received only the title and link."
+      }
+    }
+
+    const prompt = `Story context:
+Title: ${title || "(unknown title)"}
+URL: ${link || "(unknown URL)"}${excerptBlock}
+
+${comments}`
+
+    return {
+      prompt,
+      systemPrompt: contextSystemPrompt,
+      withContext: true,
+      warning,
+    }
+  }
+
+  async function runSummaryGeneration(
+    url: string,
+    comments: string,
+    generationController: AbortController,
+    jobOptions: {
+      withContext: boolean
+      storyTitle: string
+      storyUrl: string
+      storyExcerpt: string
+      storyExcerptSkipped: boolean
+    },
+  ) {
     try {
-      const summary = await GenerateText(comments, {
+      const contextSystemPrompt = jobOptions.withContext ? await contextSystemPromptStore.getValue() : ""
+      const job = buildSummaryJob(
+        comments,
+        jobOptions.withContext,
+        jobOptions.storyTitle,
+        jobOptions.storyUrl,
+        jobOptions.storyExcerpt,
+        jobOptions.storyExcerptSkipped,
+        contextSystemPrompt,
+      )
+      const summary = await GenerateText(job.prompt, {
         abortSignal: generationController.signal,
+        systemPrompt: job.systemPrompt,
         onModelStart: async modelRef => {
           await updateOngoingGeneration(url, generationController, { model: modelRef })
         },
@@ -207,10 +300,10 @@ export default defineBackground(() => {
         return
       }
 
-      let warning: string | undefined
+      let warning: string | undefined = job.warning
 
       try {
-        await saveSummary(url, summary.text, summary.model, summary.provider)
+        await saveSummary(url, summary.text, summary.model, summary.provider, job.withContext)
       } catch (error) {
         warning = `Summary was generated, but could not be saved to cache: ${getErrorMessage(error)}`
         console.warn(warning, error)
@@ -226,6 +319,7 @@ export default defineBackground(() => {
         model: summary.model,
         provider: summary.provider,
         attemptedModels: summary.attemptedModels,
+        withContext: job.withContext,
         warning,
       })
     } catch (error) {
@@ -267,6 +361,11 @@ export default defineBackground(() => {
 
     try {
       const comments = typeof message.comments === "string" ? message.comments : ""
+      const withContext = message.withContext === true
+      const storyTitle = typeof message.storyTitle === "string" ? message.storyTitle : ""
+      const storyUrl = typeof message.storyUrl === "string" ? message.storyUrl : ""
+      const storyExcerpt = typeof message.storyExcerpt === "string" ? message.storyExcerpt : ""
+      const storyExcerptSkipped = message.storyExcerptSkipped !== false
 
       if (url.trim() === "") {
         throw new Error("No Hacker News URL was provided for summary generation.")
@@ -290,7 +389,13 @@ export default defineBackground(() => {
       })
 
       sendSafeResponse(sendResponse, { success: true, started: true, model: currentModel })
-      void runSummaryGeneration(url, comments, generationController)
+      void runSummaryGeneration(url, comments, generationController, {
+        withContext,
+        storyTitle,
+        storyUrl,
+        storyExcerpt,
+        storyExcerptSkipped,
+      })
     } catch (error) {
       if (generationController && url.trim() !== "" && isActiveGeneration(url, generationController)) {
         generationController.abort()

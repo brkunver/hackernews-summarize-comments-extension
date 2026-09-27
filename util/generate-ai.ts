@@ -1,6 +1,7 @@
 import {
   DEFAULT_SUMMARY_TIMEOUT_SECONDS,
   customGoogleModelsStore,
+  hiddenGoogleModelsStore,
   modelChainStore,
   modelStore,
   systemPromptStore,
@@ -35,6 +36,7 @@ export interface GenerateTextModelError {
 
 export interface GenerateTextOptions {
   abortSignal?: AbortSignal
+  systemPrompt?: string
   onModelStart?: (modelRef: string) => Promise<void> | void
   onModelError?: (error: GenerateTextModelError) => Promise<void> | void
 }
@@ -111,20 +113,27 @@ function classifyGenerationError(error: unknown): string {
 }
 
 export async function GenerateText(prompt: string, options: GenerateTextOptions = {}) {
-  const { abortSignal, onModelError, onModelStart } = options
-  const [configuredModelChain, preferredModel, customGoogleModels] = await Promise.all([
+  const { abortSignal, systemPrompt: systemPromptOverride, onModelError, onModelStart } = options
+  const [configuredModelChain, preferredModel, customGoogleModels, hiddenGoogleModels] = await Promise.all([
     modelChainStore.getValue(),
     modelStore.getValue(),
     customGoogleModelsStore.getValue(),
+    hiddenGoogleModelsStore.getValue(),
   ])
-  const [systemPrompt, configuredTimeoutSeconds] = await Promise.all([
+  const [storedSystemPrompt, configuredTimeoutSeconds] = await Promise.all([
     systemPromptStore.getValue(),
     timeoutStore.getValue(),
   ])
+  const systemPrompt = systemPromptOverride ?? storedSystemPrompt
   const timeoutMs = normalizeTimeoutSeconds(configuredTimeoutSeconds) * 1000
   const apiKeys = await getProviderApiKeys()
   const availableProviders = getAvailableProviders(apiKeys)
-  const attemptedModels = getConfiguredModelChain(configuredModelChain, preferredModel, customGoogleModels)
+  const attemptedModels = getConfiguredModelChain(
+    configuredModelChain,
+    preferredModel,
+    customGoogleModels,
+    hiddenGoogleModels,
+  )
   const errors: { modelRef: string; error: unknown }[] = []
 
   if (availableProviders.length === 0) {

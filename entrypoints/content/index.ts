@@ -1,4 +1,5 @@
-import { getHNCommentsForLLM } from "@@/util/get-comments"
+import { getHNCommentsForLLM, getHNStoryContext } from "@@/util/get-comments"
+import { fetchStoryExcerpt } from "@@/util/story-excerpt"
 
 export default defineContentScript({
   matches: ["https://news.ycombinator.com/*"],
@@ -10,9 +11,28 @@ export default defineContentScript({
         return false
       }
 
+      const withContext = message?.withContext === true
+
       getHNCommentsForLLM()
-        .then(comments => {
-          sendResponse({ success: true, comments })
+        .then(async comments => {
+          const story = getHNStoryContext()
+          let storyExcerpt = ""
+          let storyExcerptSkipped = true
+
+          if (withContext && story.url !== "") {
+            const result = await fetchStoryExcerpt(story.url)
+            storyExcerpt = result.excerpt
+            storyExcerptSkipped = result.skipped
+          }
+
+          sendResponse({
+            success: true,
+            comments,
+            storyTitle: story.title,
+            storyUrl: story.url,
+            storyExcerpt,
+            storyExcerptSkipped,
+          })
         })
         .catch(error => {
           sendResponse({ success: false, error: error instanceof Error ? error.message : String(error) })

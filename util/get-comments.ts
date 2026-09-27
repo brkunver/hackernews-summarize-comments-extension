@@ -63,6 +63,33 @@ function sampleRandomIndices(total: number, count: number): Set<number> {
   return new Set(indices.slice(0, count))
 }
 
+export interface HNStoryContext {
+  title: string
+  url: string
+}
+
+export function getHNStoryContext(): HNStoryContext {
+  const titleLink = document.querySelector<HTMLElement>(".titleline > a")
+
+  if (!titleLink) {
+    return { title: "", url: "" }
+  }
+
+  const title = titleLink.innerText.trim()
+  const rawHref = titleLink.getAttribute("href")?.trim() ?? ""
+  let url = rawHref
+
+  if (rawHref !== "") {
+    try {
+      url = new URL(rawHref, location.href).href
+    } catch {
+      url = rawHref
+    }
+  }
+
+  return { title, url }
+}
+
 export async function getHNCommentsForLLM(): Promise<string> {
   const commentRows = Array.from(document.querySelectorAll<HTMLElement>(".comtr"))
 
