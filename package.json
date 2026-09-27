@@ -29,8 +29,8 @@
     "svelte-check": "^4.4.7",
     "tailwindcss": "^4.2.4",
     "tslib": "^2.8.1",
-    "typescript": "^5.9.3",
-    "wxt": "^0.20.25"
+    "typescript": "^7.0.2",
+    "wxt": "^0.21.4"
   },
   "engines": {
     "pnpm": ">=10.10.0"
