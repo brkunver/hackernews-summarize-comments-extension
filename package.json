@@ -9,15 +9,15 @@
     "dev:firefox": "wxt -b firefox",
     "build": "wxt build",
     "build:firefox": "wxt build -b firefox",
-    "resize": "pnpm dlx @kunver/resize@latest",
+    "resize": "bun dlx @kunver/resize@latest",
     "zip": "wxt zip",
-    "zip:all": "pnpm run zip && pnpm run zip:firefox",
+    "zip:all": "bun run zip && bun run zip:firefox",
     "zip:firefox": "wxt zip -b firefox",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "tsc --noEmit",
     "postinstall": "wxt prepare",
-    "manager": "node manager.cjs pnpm"
+    "manager": "bun manager.cjs bun"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.4",
