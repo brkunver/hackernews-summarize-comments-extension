@@ -11,7 +11,7 @@ export default function ApiKeysSection(props: ApiKeysSectionProps) {
   return (
     <section class="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
       <h2 class="text-sm font-semibold text-zinc-100">API Keys</h2>
-      <p class="mt-1 text-sm text-zinc-400">Keys are stored locally in the browser and never shared.</p>
+      <p class="mt-1 text-sm text-zinc-400">Keys are stored locally and sent only to the selected AI provider to generate summaries.</p>
 
       <div class="mt-4 space-y-4">
         <For each={AI_PROVIDER_API_KEY_FIELDS}>
