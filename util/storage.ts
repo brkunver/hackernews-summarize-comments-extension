@@ -71,6 +71,11 @@ export const timeoutStore = storage.defineItem<number>("sync:timeout", {
   version: 1,
 })
 
+export const streamingStore = storage.defineItem<boolean>("local:streaming", {
+  fallback: false,
+  version: 1,
+})
+
 interface SavedSummaryV1 {
   id: string
   summary: string
@@ -99,6 +104,11 @@ export const savedSummariesStore = storage.defineItem<SavedSummaryV2[]>("local:s
 })
 
 export interface OngoingGeneration {
+  generationId?: number
+  revision?: number
+  streaming?: boolean
+  summary?: string
+  withContext?: boolean
   url: string
   model: string
   timestamp: number

@@ -1,4 +1,4 @@
-import { createSignal, Show } from "solid-js"
+import { createMemo, createSignal, Show } from "solid-js"
 import {
   DEFAULT_RANDOM_COMMENT_SELECTION,
   DEFAULT_MAX_COMMENT_DEPTH,
@@ -14,6 +14,7 @@ import {
   savedSummariesStore,
   systemPromptStore,
   timeoutStore,
+  streamingStore,
   type SavedSummaryV2,
 } from "~/util/storage"
 import { getErrorMessage } from "~/util/errors"
@@ -27,7 +28,7 @@ import {
   normalizeModelChain,
 } from "~/util/models"
 import type { AiProvider } from "~/util/models"
-import { createEmptyProviderApiKeys, getProviderApiKeys, setProviderApiKeys } from "~/util/providers"
+import { AI_PROVIDER_API_KEY_FIELDS, createEmptyProviderApiKeys, getProviderApiKeys } from "~/util/providers"
 import { onMount } from "solid-js"
 import ApiKeysSection from "./components/ApiKeysSection"
 import ModelChainSection from "./components/ModelChainSection"
@@ -37,6 +38,7 @@ import PromptEditor from "./components/PromptEditor"
 import CachedSummariesSection from "./components/CachedSummariesSection"
 import { normalizeMaxComments, normalizeMaxDepth, normalizeTimeout, padModelChain } from "./helpers"
 import { getExtensionVersion } from "~/util/format"
+import { createSettingsAutoSave } from "./auto-save"
 
 export default function Options() {
   const [apiKeys, setApiKeys] = createSignal<Record<AiProvider, string>>(createEmptyProviderApiKeys())
@@ -50,12 +52,62 @@ export default function Options() {
   const [hiddenGoogleModels, setHiddenGoogleModels] = createSignal<string[]>([])
   const [newCustomModel, setNewCustomModel] = createSignal("")
   const [timeout, setTimeout] = createSignal(DEFAULT_SUMMARY_TIMEOUT_SECONDS)
-  const [isLoading, setIsLoading] = createSignal(false)
+  const [streaming, setStreaming] = createSignal(false)
+  const [isReady, setIsReady] = createSignal(false)
   const [saveMessage, setSaveMessage] = createSignal("")
   const [cachedSummaries, setCachedSummaries] = createSignal<SavedSummaryV2[]>([])
 
   const availableModels = () => getAvailableModelRefs(customGoogleModels(), hiddenGoogleModels())
-  const isSaveError = () => saveMessage().includes("Error")
+  const autoSave = createSettingsAutoSave(isReady)
+  const savedModelChain = createMemo(() => {
+    const allowedModels = new Set(availableModels())
+    const chain = normalizeModelChain(
+      selectedModelChain().filter(model => allowedModels.has(model) && isModelSelectable(model)),
+      customGoogleModels(),
+      hiddenGoogleModels(),
+    )
+    const fallbackModel = availableModels().find(isModelSelectable)
+    return chain.length > 0 ? chain : fallbackModel ? [fallbackModel] : []
+  })
+
+  for (const field of AI_PROVIDER_API_KEY_FIELDS) {
+    autoSave.bind(
+      field.label,
+      () => apiKeys()[field.provider],
+      value => field.store.setValue(value),
+      600,
+    )
+  }
+  autoSave.bind("System prompt", systemPrompt, value => systemPromptStore.setValue(value), 600)
+  autoSave.bind("Context prompt", contextSystemPrompt, value => contextSystemPromptStore.setValue(value), 600)
+  autoSave.bind(
+    "Max comments",
+    () => normalizeMaxComments(maxComments()),
+    value => maxCommentsStore.setValue(value),
+    600,
+  )
+  autoSave.bind("Streaming", streaming, value => streamingStore.setValue(value))
+  autoSave.bind("Random selection", randomSelection, value => randomCommentSelectionStore.setValue(value))
+  autoSave.bind(
+    "Max depth",
+    () => normalizeMaxDepth(maxDepth()),
+    value => maxCommentDepthStore.setValue(value),
+    600,
+  )
+  autoSave.bind(
+    "Timeout",
+    () => normalizeTimeout(timeout()),
+    value => timeoutStore.setValue(value),
+    600,
+  )
+  autoSave.bind("Custom models", customGoogleModels, value => customGoogleModelsStore.setValue(value))
+  autoSave.bind("Hidden models", hiddenGoogleModels, value => hiddenGoogleModelsStore.setValue(value))
+  autoSave.bind("Model order", savedModelChain, async chain => {
+    await modelChainStore.setValue(chain)
+    if (chain[0]) {
+      await modelStore.setValue(chain[0])
+    }
+  })
 
   onMount(async () => {
     try {
@@ -79,7 +131,9 @@ export default function Options() {
       setRandomSelection((await randomCommentSelectionStore.getValue()) ?? DEFAULT_RANDOM_COMMENT_SELECTION)
       setMaxDepth(normalizeMaxDepth(await maxCommentDepthStore.getValue()))
       setTimeout(await timeoutStore.getValue())
+      setStreaming(await streamingStore.getValue())
       setCachedSummaries(await savedSummariesStore.getValue())
+      setIsReady(true)
     } catch (error) {
       setSaveMessage(`Error loading settings: ${getErrorMessage(error)}`)
       console.error("Error loading settings:", error)
@@ -92,62 +146,6 @@ export default function Options() {
     return provider !== null && apiKeys()[provider].trim() !== ""
   }
 
-  async function saveSettings() {
-    setIsLoading(true)
-    setSaveMessage("")
-
-    try {
-      const normalizedCustomModels = normalizeCustomGoogleModels(customGoogleModels())
-      const normalizedHiddenModels = normalizeHiddenGoogleModels(hiddenGoogleModels())
-      setCustomGoogleModels(normalizedCustomModels)
-      setHiddenGoogleModels(normalizedHiddenModels)
-      const allowedModelRefs = new Set(getAvailableModelRefs(normalizedCustomModels, normalizedHiddenModels))
-      const selectableModels = getAvailableModelRefs(normalizedCustomModels, normalizedHiddenModels).filter(
-        isModelSelectable,
-      )
-      const modelChainToSave = normalizeModelChain(
-        selectedModelChain().filter(model => allowedModelRefs.has(model) && isModelSelectable(model)),
-        normalizedCustomModels,
-        normalizedHiddenModels,
-      )
-      const fallbackModel = selectableModels[0]
-      const savedModelChain = modelChainToSave.length > 0 ? modelChainToSave : fallbackModel ? [fallbackModel] : []
-
-      await setProviderApiKeys(apiKeys())
-      await systemPromptStore.setValue(systemPrompt())
-      await contextSystemPromptStore.setValue(contextSystemPrompt())
-      await maxCommentsStore.setValue(normalizeMaxComments(maxComments()))
-      await randomCommentSelectionStore.setValue(randomSelection())
-      await maxCommentDepthStore.setValue(normalizeMaxDepth(maxDepth()))
-      await customGoogleModelsStore.setValue(normalizedCustomModels)
-      await hiddenGoogleModelsStore.setValue(normalizedHiddenModels)
-      await timeoutStore.setValue(normalizeTimeout(timeout()))
-      await modelChainStore.setValue(savedModelChain)
-      setSelectedModelChain(padModelChain(savedModelChain))
-      setMaxComments(normalizeMaxComments(maxComments()))
-      setMaxDepth(normalizeMaxDepth(maxDepth()))
-      setNewCustomModel("")
-
-      const firstModel = savedModelChain[0]
-
-      if (firstModel) {
-        await modelStore.setValue(firstModel)
-        setSaveMessage("Settings saved successfully!")
-      } else {
-        setSaveMessage("Settings saved. Add an API key and choose at least one model to enable generation.")
-      }
-
-      window.setTimeout(() => {
-        setSaveMessage("")
-      }, 3000)
-    } catch (error) {
-      console.error("Error saving settings:", error)
-      setSaveMessage(`Error saving settings: ${getErrorMessage(error)}`)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
   return (
     <main class="min-h-screen bg-zinc-950 p-4 text-zinc-100 sm:p-8">
       <div class="mx-auto max-w-3xl">
@@ -158,20 +156,27 @@ export default function Options() {
           <div>
             <h1 class="text-xl font-bold">Settings</h1>
             <p class="text-xs text-zinc-500">Hackernews Summarize Comments</p>
+            <p class="mt-1 text-xs text-zinc-400" role="status" aria-live="polite">
+              <Show when={isReady()} fallback="Loading settings...">
+                {autoSave.pendingCount() > 0 ? "Saving changes..." : "Changes save automatically."}
+              </Show>
+            </p>
           </div>
         </header>
 
-        <div class="space-y-4">
+        <fieldset disabled={!isReady()} onFocusOut={autoSave.flush} class="min-w-0 space-y-4">
           <ApiKeysSection
             apiKeys={apiKeys()}
             onApiKeyInput={(provider, value) => setApiKeys(prev => ({ ...prev, [provider]: value }))}
           />
 
           <ModelChainSection
-            selectedModelChain={selectedModelChain()}
+            selectedModelChain={padModelChain(savedModelChain())}
             onSelectModel={(slotIndex, model) =>
-              setSelectedModelChain(prev =>
-                prev.map((selectedModel, index) => (index === slotIndex ? model : selectedModel)),
+              setSelectedModelChain(
+                padModelChain(savedModelChain()).map((selectedModel, index) =>
+                  index === slotIndex ? model : selectedModel,
+                ),
               )
             }
             availableModels={availableModels()}
@@ -202,6 +207,21 @@ export default function Options() {
             onTimeoutInput={setTimeout}
           />
 
+          <section class="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
+            <label class="flex cursor-pointer items-center gap-2 text-sm font-medium text-zinc-100">
+              <input
+                type="checkbox"
+                checked={streaming()}
+                onChange={event => setStreaming(event.currentTarget.checked)}
+                class="h-4 w-4 accent-orange-500"
+              />
+              Stream summary
+            </label>
+            <p class="mt-2 text-xs text-zinc-400">
+              Show words as the AI writes. When off, show the complete summary. Changes apply to the next summary.
+            </p>
+          </section>
+
           <PromptEditor
             title="System Prompt"
             description="This prompt guides the AI in summarizing comments."
@@ -218,25 +238,21 @@ export default function Options() {
             onInput={setContextSystemPrompt}
           />
 
-          <div class="pt-2">
-            <button
-              onclick={saveSettings}
-              disabled={isLoading()}
-              class="w-full rounded-xl bg-orange-600 py-3 font-semibold text-white transition-colors
-              hover:bg-orange-500 disabled:bg-orange-900 disabled:text-zinc-400"
-            >
-              {isLoading() ? "Saving..." : "Save Settings"}
-            </button>
-
-            <Show when={saveMessage()}>
-              <div
-                class={`mt-4 rounded-xl p-3 text-sm ${isSaveError() ? "bg-red-950 text-red-200" : "bg-emerald-950 text-emerald-200"}`}
-              >
-                {saveMessage()}
-              </div>
-            </Show>
-          </div>
-        </div>
+          <Show when={saveMessage() || autoSave.error()}>
+            <div class="rounded-xl bg-red-950 p-3 text-sm text-red-200" role="alert">
+              <Show when={autoSave.error()} fallback={saveMessage()}>
+                {error => (
+                  <>
+                    Could not save {error()[0]}: {error()[1]}
+                    <button type="button" onclick={autoSave.flush} class="ml-3 underline">
+                      Retry
+                    </button>
+                  </>
+                )}
+              </Show>
+            </div>
+          </Show>
+        </fieldset>
 
         <div class="mt-4">
           <CachedSummariesSection summaries={cachedSummaries()} onChangeSummaries={setCachedSummaries} />

@@ -10,6 +10,7 @@ import {
   modelStore,
   ongoingGenerationStore,
   savedSummariesStore,
+  streamingStore,
   type GenerationErrorHistoryItem,
   type LastSummaryError,
   type OngoingGeneration,
@@ -42,12 +43,17 @@ export default defineBackground(() => {
 
   const activeGenerationControllers = new Map<string, AbortController>()
 
+  let lastGenerationId = 0
+  const generationIds = new WeakMap<AbortController, number>()
+
   function isActiveGeneration(url: string, generationController: AbortController) {
     return activeGenerationControllers.get(url) === generationController
   }
 
   function sendRuntimeMessage(message: Record<string, unknown>) {
-    void browser.runtime.sendMessage(message).catch(error => {
+    const controller = activeGenerationControllers.get(String(message.url))
+    const generationId = controller ? generationIds.get(controller) : undefined
+    void browser.runtime.sendMessage({ generationId, ...message }).catch(error => {
       console.debug("Runtime message had no active receiver.", error)
     })
   }
@@ -124,7 +130,7 @@ export default defineBackground(() => {
   async function updateOngoingGeneration(
     url: string,
     generationController: AbortController,
-    updates: Partial<Pick<OngoingGeneration, "model" | "errorHistory">>,
+    updates: Partial<Pick<OngoingGeneration, "model" | "errorHistory" | "summary" | "withContext">>,
   ) {
     if (!isActiveGeneration(url, generationController)) {
       return
@@ -133,18 +139,30 @@ export default defineBackground(() => {
     try {
       const ongoing = await ongoingGenerationStore.getValue()
 
-      if (!ongoing || ongoing.url !== url) {
+      if (
+        !ongoing ||
+        ongoing.url !== url ||
+        !isActiveGeneration(url, generationController) ||
+        generationController.signal.aborted
+      ) {
         return
       }
 
       await ongoingGenerationStore.setValue({
         ...ongoing,
         ...updates,
+        revision: (ongoing.revision ?? 0) + 1,
         timestamp: Date.now(),
       })
 
+      if (generationController.signal.aborted) {
+        return
+      }
       sendRuntimeMessage({
         action: "generationUpdated",
+        ...ongoing,
+        ...updates,
+        revision: (ongoing.revision ?? 0) + 1,
         url,
         model: updates.model ?? ongoing.model,
         errorHistory: updates.errorHistory ?? ongoing.errorHistory ?? [],
@@ -279,13 +297,23 @@ ${comments}`
         jobOptions.storyExcerptSkipped,
         contextSystemPrompt,
       )
+      const state = await ongoingGenerationStore.getValue()
       const summary = await GenerateText(job.prompt, {
+        streaming: state?.streaming === true,
+        onText: async text => {
+          await updateOngoingGeneration(url, generationController, { summary: text, withContext: job.withContext })
+        },
         abortSignal: generationController.signal,
         systemPrompt: job.systemPrompt,
         onModelStart: async modelRef => {
-          await updateOngoingGeneration(url, generationController, { model: modelRef })
+          await updateOngoingGeneration(url, generationController, {
+            model: modelRef,
+            summary: "",
+            withContext: job.withContext,
+          })
         },
         onModelError: async error => {
+          await updateOngoingGeneration(url, generationController, { summary: "" })
           await rememberGenerationAttemptError(url, generationController, {
             model: error.modelRef,
             message: error.message,
@@ -296,8 +324,8 @@ ${comments}`
         },
       })
 
-      if (!isActiveGeneration(url, generationController)) {
-        return
+      if (!isActiveGeneration(url, generationController) || generationController.signal.aborted) {
+        throw new SummaryGenerationCancelledError()
       }
 
       let warning: string | undefined = job.warning
@@ -309,11 +337,16 @@ ${comments}`
         console.warn(warning, error)
       }
 
+      if (generationController.signal.aborted) {
+        throw new SummaryGenerationCancelledError()
+      }
       await clearOngoingGenerationIfActive(url, generationController)
       await clearLastSummaryErrorForUrl(url)
 
       sendRuntimeMessage({
         action: "summaryComplete",
+        generationId: state?.generationId,
+        revision: Number.MAX_SAFE_INTEGER,
         url,
         summary: summary.text,
         model: summary.model,
@@ -375,20 +408,30 @@ ${comments}`
         throw new Error("No readable Hacker News comments were provided for summary generation.")
       }
 
-      const previousController = activeGenerationControllers.get(url)
-      previousController?.abort()
+      if (activeGenerationControllers.size > 0) {
+        throw new Error("A summary is already being generated. Cancel it before starting another.")
+      }
 
       generationController = new AbortController()
       activeGenerationControllers.set(url, generationController)
 
       const currentModel = await getCurrentModel()
+      const streaming = await streamingStore.getValue()
+      const generationId = Math.max(Date.now(), lastGenerationId + 1)
+      lastGenerationId = generationId
+      generationIds.set(generationController, generationId)
       await ongoingGenerationStore.setValue({
         url,
         model: currentModel,
+        generationId,
+        revision: 0,
+        streaming,
+        summary: "",
+        withContext,
         timestamp: Date.now(),
       })
 
-      sendSafeResponse(sendResponse, { success: true, started: true, model: currentModel })
+      sendSafeResponse(sendResponse, { success: true, started: true, model: currentModel, generationId, streaming })
       void runSummaryGeneration(url, comments, generationController, {
         withContext,
         storyTitle,
@@ -476,6 +519,11 @@ ${comments}`
       sendSafeResponse(sendResponse, {
         success: true,
         active: true,
+        generationId: ongoing.generationId,
+        revision: ongoing.revision,
+        streaming: ongoing.streaming,
+        summary: ongoing.summary,
+        withContext: ongoing.withContext,
         model: ongoing.model,
         timestamp: ongoing.timestamp,
         errorHistory: ongoing.errorHistory ?? [],
@@ -504,7 +552,10 @@ ${comments}`
 
       const generationController = activeGenerationControllers.get(url)
       generationController?.abort()
-      await ongoingGenerationStore.setValue(null)
+      const ongoing = await ongoingGenerationStore.getValue()
+      if (ongoing?.url === url) {
+        await ongoingGenerationStore.setValue(null)
+      }
 
       if (generationController) {
         sendRuntimeMessage({

@@ -27,7 +27,7 @@ export default function PromptEditor(props: PromptEditorProps) {
           onclick={toggleEdit}
           class="shrink-0 rounded-lg bg-zinc-800 px-3 py-1.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-700"
         >
-          {isEditing() ? "Cancel" : "Edit"}
+          {isEditing() ? "Done" : "Edit"}
         </button>
       </div>
 
@@ -59,9 +59,7 @@ export default function PromptEditor(props: PromptEditorProps) {
           focus:outline-none focus:ring-2 focus:ring-orange-500/40"
           placeholder="Enter your custom prompt..."
         ></textarea>
-        <p class="mt-2 text-sm text-amber-400">
-          ⚠️ Editing mode active. Changes will be saved when you click "Save Settings".
-        </p>
+        <p class="mt-2 text-sm text-amber-400">⚠️ Editing mode active. Changes are saved automatically.</p>
       </Show>
     </section>
   )

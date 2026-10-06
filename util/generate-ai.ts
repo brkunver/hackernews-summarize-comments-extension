@@ -7,7 +7,7 @@ import {
   systemPromptStore,
   timeoutStore,
 } from "./storage"
-import { generateText } from "ai"
+import { generateText, smoothStream, streamText } from "ai"
 import {
   type AiProvider,
   AI_PROVIDER_ORDER,
@@ -35,6 +35,8 @@ export interface GenerateTextModelError {
 }
 
 export interface GenerateTextOptions {
+  streaming?: boolean
+  onText?: (text: string) => Promise<void> | void
   abortSignal?: AbortSignal
   systemPrompt?: string
   onModelStart?: (modelRef: string) => Promise<void> | void
@@ -166,13 +168,37 @@ export async function GenerateText(prompt: string, options: GenerateTextOptions 
         throw new Error(`Missing API key for ${formatModelWithProvider(modelRef, provider)}`)
       }
 
-      const { text } = await generateText({
+      const settings = {
         model: getProviderLanguageModel(provider, apiKey, model),
         system: systemPrompt,
         prompt,
         abortSignal,
         timeout: timeoutMs,
-      })
+      }
+      let text = ""
+      if (options.streaming) {
+        let streamError: unknown
+        const result = streamText({
+          ...settings,
+          experimental_transform: smoothStream({ chunking: "word", delayInMs: null }),
+          onError: event => {
+            streamError = event.error
+          },
+        })
+        for await (const word of result.textStream) {
+          if (abortSignal?.aborted) {
+            throw new SummaryGenerationCancelledError()
+          }
+          text += word
+          await options.onText?.(text)
+        }
+        if (streamError) {
+          throw streamError
+        }
+        text = await result.text
+      } else {
+        text = (await generateText(settings)).text
+      }
 
       if (abortSignal?.aborted) {
         throw new SummaryGenerationCancelledError()

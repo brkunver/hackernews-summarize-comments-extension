@@ -30,6 +30,8 @@ interface GetCommentsResponse {
 }
 
 interface GenerateSummaryResponse {
+  generationId?: number
+  streaming?: boolean
   success?: boolean
   started?: boolean
   model?: string
@@ -39,6 +41,11 @@ interface GenerateSummaryResponse {
 }
 
 interface GenerationStatusResponse {
+  generationId?: number
+  revision?: number
+  streaming?: boolean
+  summary?: string
+  withContext?: boolean
   success?: boolean
   active?: boolean
   model?: string
@@ -49,6 +56,9 @@ interface GenerationStatusResponse {
 }
 
 interface RuntimeSummaryMessage {
+  generationId?: number
+  revision?: number
+  streaming?: boolean
   action?: string
   url?: string
   summary?: string
@@ -68,6 +78,10 @@ function checkIfHackerNewsUrl(url: string): boolean {
 }
 
 export default function Popup() {
+  const [isStreaming, setIsStreaming] = createSignal(false)
+  let generationId = 0
+  let revision = -1
+  let finishedGenerationId = 0
   const [isLoading, setIsLoading] = createSignal(false)
   const [comments, setComments] = createSignal("")
   const [summary, setSummary] = createSignal("")
@@ -186,7 +200,12 @@ export default function Popup() {
 
   async function loadCachedSummary(url: string): Promise<boolean> {
     try {
+      const observedGenerationId = generationId
+      const observedFinishedId = finishedGenerationId
       const savedSummaries = await savedSummariesStore.getValue()
+      if (generationId !== observedGenerationId || finishedGenerationId !== observedFinishedId) {
+        return false
+      }
       const cachedSummary = savedSummaries.find(item => item.id === url)
 
       if (cachedSummary?.summary?.trim()) {
@@ -220,6 +239,8 @@ export default function Popup() {
   }
 
   async function checkOngoingGeneration(): Promise<boolean> {
+    const requestedGenerationId = generationId
+    const requestedRevision = revision
     try {
       const status = await withTimeout(
         browser.runtime.sendMessage({
@@ -230,22 +251,32 @@ export default function Popup() {
         "Timed out while checking summary generation status.",
       )
 
+      if (generationId !== requestedGenerationId || revision !== requestedRevision) {
+        return isGeneratingSummary() || isProcessingInBackground()
+      }
+
       if (!status?.success) {
         setErrorMessage(status?.error || "Failed to check summary generation status.", status?.details)
         resetGenerationState()
         return false
       }
 
+      if (status.generationId && status.generationId <= finishedGenerationId) {
+        return false
+      }
       if (status.active && status.model) {
         setIsProcessingInBackground(true)
         setIsGeneratingSummary(true)
         setCurrentModelName(status.model)
         setCurrentModelProvider(getModelProvider(status.model))
+        applyStreamState(status)
         setGenerationErrorHistory(status.errorHistory ?? [])
         return true
       }
 
+      discardPartialSummary()
       resetGenerationState()
+      await loadCachedSummary(currentUrl())
 
       if (status.error) {
         setErrorMessage(status.error, status.details)
@@ -260,6 +291,7 @@ export default function Popup() {
         setIsGeneratingSummary(true)
         setCurrentModelName(ongoing.model)
         setCurrentModelProvider(getModelProvider(ongoing.model))
+        applyStreamState(ongoing)
         setGenerationErrorHistory(ongoing.errorHistory ?? [])
         setWarning("Could not confirm the background job status. If this stays stuck, cancel and try again.")
         return true
@@ -344,6 +376,15 @@ export default function Popup() {
           return
         }
 
+        if (backgroundResponse.generationId && backgroundResponse.generationId > generationId) {
+          generationId = backgroundResponse.generationId
+          revision = -1
+          setIsStreaming(backgroundResponse.streaming === true)
+          if (backgroundResponse.streaming) {
+            setSummary("")
+          }
+        }
+
         if (backgroundResponse.model) {
           setCurrentModelName(backgroundResponse.model)
           setCurrentModelProvider(getModelProvider(backgroundResponse.model))
@@ -381,9 +422,8 @@ export default function Popup() {
         "Timed out while cancelling summary generation.",
       )
 
-      await ongoingGenerationStore.setValue(null)
-      setIsProcessingInBackground(false)
-      setIsGeneratingSummary(false)
+      discardPartialSummary()
+      resetGenerationState()
 
       if (!response?.success && response?.error) {
         setWarning(response.error)
@@ -422,7 +462,36 @@ export default function Popup() {
     console.log("Summary completed in background:", message.summary)
   }
 
+  function discardPartialSummary() {
+    if (isStreaming()) {
+      setSummary("")
+      setSummaryCreatedBy("")
+    }
+  }
+
+  function applyStreamState(state: GenerationStatusResponse) {
+    if (!state.generationId || state.generationId <= finishedGenerationId || state.generationId < generationId) {
+      return
+    }
+    if (state.generationId > generationId) {
+      generationId = state.generationId
+      revision = -1
+    }
+    if ((state.revision ?? 0) < revision) {
+      return
+    }
+    revision = state.revision ?? 0
+    setIsStreaming(state.streaming === true)
+    if (state.streaming) {
+      setSummary(state.summary ?? "")
+      setSummaryWithContext(state.withContext === true)
+      setSummaryCreatedBy("")
+    }
+  }
+
   function resetGenerationState() {
+    finishedGenerationId = Math.max(finishedGenerationId, generationId)
+    setIsStreaming(false)
     setIsProcessingInBackground(false)
     setIsGeneratingSummary(false)
     setIsCancellingSummary(false)
@@ -493,11 +562,30 @@ export default function Popup() {
         return
       }
 
+      if (
+        message.generationId &&
+        (message.generationId < generationId || message.generationId <= finishedGenerationId)
+      ) {
+        return
+      }
+      if (message.generationId && message.generationId > generationId) {
+        generationId = message.generationId
+        revision = -1
+      }
+
       if (message.action === "summaryComplete") {
         handleSummaryComplete(message)
       }
 
       if (message.action === "generationUpdated") {
+        if (message.revision !== undefined && message.revision < revision) {
+          return
+        }
+        setIsGeneratingSummary(true)
+        setIsProcessingInBackground(true)
+        if (message.revision !== undefined) {
+          applyStreamState(message)
+        }
         if (message.model) {
           setCurrentModelName(message.model)
           setCurrentModelProvider(getModelProvider(message.model))
@@ -507,11 +595,13 @@ export default function Popup() {
       }
 
       if (message.action === "summaryFailed") {
+        discardPartialSummary()
         resetGenerationState()
         setErrorMessage(message.error || "Summary generation failed.", message.details)
       }
 
       if (message.action === "summaryCancelled") {
+        discardPartialSummary()
         resetGenerationState()
         setWarning("Summary generation was cancelled.")
       }
@@ -583,6 +673,7 @@ export default function Popup() {
         <Show when={summary()}>
           <SummaryCard
             summary={summary()}
+            streaming={isStreaming()}
             withContext={summaryWithContext()}
             createdByLabel={summaryCreatedByLabel()}
           />

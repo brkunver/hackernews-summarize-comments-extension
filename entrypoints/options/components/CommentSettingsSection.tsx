@@ -5,6 +5,7 @@ import {
   DEFAULT_SUMMARY_TIMEOUT_SECONDS,
   MAX_COMMENT_DEPTH_LIMIT,
 } from "~/util/storage"
+import { normalizeMaxComments, normalizeMaxDepth, normalizeTimeout } from "../helpers"
 
 type CommentSettingsSectionProps = {
   maxComments: number
@@ -33,6 +34,7 @@ export default function CommentSettingsSection(props: CommentSettingsSectionProp
             type="number"
             value={props.maxComments}
             onInput={event => props.onMaxCommentsInput(event.currentTarget.valueAsNumber)}
+            onBlur={event => props.onMaxCommentsInput(normalizeMaxComments(event.currentTarget.valueAsNumber))}
             min="-1"
             class="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2 text-zinc-100
             focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/40"
@@ -65,6 +67,7 @@ export default function CommentSettingsSection(props: CommentSettingsSectionProp
             type="number"
             value={props.maxDepth}
             onInput={event => props.onMaxDepthInput(event.currentTarget.valueAsNumber)}
+            onBlur={event => props.onMaxDepthInput(normalizeMaxDepth(event.currentTarget.valueAsNumber))}
             min="-1"
             max={MAX_COMMENT_DEPTH_LIMIT}
             class="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2 text-zinc-100
@@ -85,6 +88,7 @@ export default function CommentSettingsSection(props: CommentSettingsSectionProp
             type="number"
             value={props.timeout}
             onInput={event => props.onTimeoutInput(event.currentTarget.valueAsNumber)}
+            onBlur={event => props.onTimeoutInput(normalizeTimeout(event.currentTarget.valueAsNumber))}
             min="1"
             class="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2 text-zinc-100
             focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/40"
