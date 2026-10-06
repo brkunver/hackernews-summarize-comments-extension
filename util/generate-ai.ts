@@ -4,6 +4,7 @@ import {
   hiddenGoogleModelsStore,
   modelChainStore,
   modelStore,
+  outputLanguageStore,
   systemPromptStore,
   timeoutStore,
 } from "./storage"
@@ -19,6 +20,7 @@ import {
 } from "./models"
 import { getAvailableProviders, getProviderApiKey, getProviderApiKeys, getProviderLanguageModel } from "./providers"
 import { getErrorMessage, serializeError } from "./errors"
+import { resolvePromptLanguage } from "./prompt-language"
 
 export interface GenerateTextResult {
   text: string
@@ -122,11 +124,12 @@ export async function GenerateText(prompt: string, options: GenerateTextOptions 
     customGoogleModelsStore.getValue(),
     hiddenGoogleModelsStore.getValue(),
   ])
-  const [storedSystemPrompt, configuredTimeoutSeconds] = await Promise.all([
+  const [storedSystemPrompt, configuredTimeoutSeconds, outputLanguage] = await Promise.all([
     systemPromptStore.getValue(),
     timeoutStore.getValue(),
+    outputLanguageStore.getValue(),
   ])
-  const systemPrompt = systemPromptOverride ?? storedSystemPrompt
+  const systemPrompt = resolvePromptLanguage(systemPromptOverride ?? storedSystemPrompt, outputLanguage)
   const timeoutMs = normalizeTimeoutSeconds(configuredTimeoutSeconds) * 1000
   const apiKeys = await getProviderApiKeys()
   const availableProviders = getAvailableProviders(apiKeys)

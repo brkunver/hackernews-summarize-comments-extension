@@ -15,8 +15,10 @@ import {
   systemPromptStore,
   timeoutStore,
   streamingStore,
+  outputLanguageStore,
   type SavedSummaryV2,
 } from "~/util/storage"
+import { DEFAULT_OUTPUT_LANGUAGE, normalizeOutputLanguage } from "~/util/prompt-language"
 import { getErrorMessage } from "~/util/errors"
 import {
   MODEL_CHAIN_LENGTH,
@@ -52,6 +54,7 @@ export default function Options() {
   const [hiddenGoogleModels, setHiddenGoogleModels] = createSignal<string[]>([])
   const [newCustomModel, setNewCustomModel] = createSignal("")
   const [timeout, setTimeout] = createSignal(DEFAULT_SUMMARY_TIMEOUT_SECONDS)
+  const [outputLanguage, setOutputLanguage] = createSignal(DEFAULT_OUTPUT_LANGUAGE)
   const [streaming, setStreaming] = createSignal(false)
   const [isReady, setIsReady] = createSignal(false)
   const [saveMessage, setSaveMessage] = createSignal("")
@@ -84,6 +87,12 @@ export default function Options() {
     "Max comments",
     () => normalizeMaxComments(maxComments()),
     value => maxCommentsStore.setValue(value),
+    600,
+  )
+  autoSave.bind(
+    "Output language",
+    () => normalizeOutputLanguage(outputLanguage()),
+    value => outputLanguageStore.setValue(value),
     600,
   )
   autoSave.bind("Streaming", streaming, value => streamingStore.setValue(value))
@@ -132,6 +141,7 @@ export default function Options() {
       setMaxDepth(normalizeMaxDepth(await maxCommentDepthStore.getValue()))
       setTimeout(await timeoutStore.getValue())
       setStreaming(await streamingStore.getValue())
+      setOutputLanguage(normalizeOutputLanguage(await outputLanguageStore.getValue()))
       setCachedSummaries(await savedSummariesStore.getValue())
       setIsReady(true)
     } catch (error) {
@@ -219,6 +229,27 @@ export default function Options() {
             </label>
             <p class="mt-2 text-xs text-zinc-400">
               Show words as the AI writes. When off, show the complete summary. Changes apply to the next summary.
+            </p>
+          </section>
+
+          <section class="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
+            <label for="outputLanguage" class="mb-1.5 block text-sm font-medium text-zinc-100">
+              Output language
+            </label>
+            <input
+              id="outputLanguage"
+              type="text"
+              value={outputLanguage()}
+              onInput={event => setOutputLanguage(event.currentTarget.value)}
+              onBlur={() => setOutputLanguage(normalizeOutputLanguage(outputLanguage()))}
+              placeholder="English"
+              aria-describedby="outputLanguageHelp"
+              class="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2 text-zinc-100 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/40"
+            />
+            <p id="outputLanguageHelp" class="mt-2 text-xs text-zinc-400">
+              {
+                'Use {language} in either system prompt, for example: "Output in {language}." Enter any language, such as English or Turkish. Empty means English. Changes apply to the next summary.'
+              }
             </p>
           </section>
 

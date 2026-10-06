@@ -1,5 +1,6 @@
 import { storage } from "#imports"
 import { GOOGLE_AI_MODEL_FALLBACKS } from "./models"
+import { DEFAULT_OUTPUT_LANGUAGE } from "./prompt-language"
 
 export const apiKeyStore = storage.defineItem<string>("sync:apiKey", {
   fallback: "",
@@ -76,6 +77,11 @@ export const streamingStore = storage.defineItem<boolean>("local:streaming", {
   version: 1,
 })
 
+export const outputLanguageStore = storage.defineItem<string>("sync:outputLanguage", {
+  fallback: DEFAULT_OUTPUT_LANGUAGE,
+  version: 1,
+})
+
 interface SavedSummaryV1 {
   id: string
   summary: string
@@ -141,8 +147,7 @@ export const lastSummaryErrorStore = storage.defineItem<LastSummaryError | null>
   version: 1,
 })
 
-export const systemPromptStore = storage.defineItem<string>("sync:systemPrompt", {
-  fallback: `You are an assistant that summarizes Hacker News comment threads.
+export const SYSTEM_PROMPT_FALLBACK = `You are an assistant that summarizes Hacker News comment threads.
 
 Your task:
 - Read a list of Hacker News comments.
@@ -153,7 +158,7 @@ Your task:
 
 Output rules:
 - Produce a concise summary in 3 to 6 bullet points.
-- Output in English.
+- Output in {language}.
 - Use Markdown
 - Add empty lines between bullet points.
 - Each bullet should represent a distinct viewpoint or theme.
@@ -166,13 +171,15 @@ Style:
 - Clear, compact, and factual.
 - No emojis.
 - No filler.
-  `,
-  version: 2,
+  `
+
+export const systemPromptStore = storage.defineItem<string>("sync:systemPrompt", {
+  fallback: SYSTEM_PROMPT_FALLBACK,
+  version: 3,
   migrations: {
-    // Migration from v1 (local) to v2 (sync): move system prompt to sync storage
-    2: (localValue: string): string => {
-      return localValue
-    },
+    2: (storedPrompt: string) => storedPrompt,
+    3: (storedPrompt: string) =>
+      storedPrompt === SYSTEM_PROMPT_FALLBACK.replace("{language}", "English") ? SYSTEM_PROMPT_FALLBACK : storedPrompt,
   },
 })
 
@@ -217,7 +224,7 @@ Your task:
 
 Output rules:
 - Start with the story summary (or the cannot-access note), then produce a concise comment summary in 3 to 6 bullet points.
-- Output in English.
+- Output in {language}.
 - Use Markdown
 - Add empty lines between bullet points.
 - Each bullet should represent a distinct viewpoint or theme.
@@ -234,8 +241,12 @@ Style:
 
 export const contextSystemPromptStore = storage.defineItem<string>("sync:contextSystemPrompt", {
   fallback: CONTEXT_SYSTEM_PROMPT_FALLBACK,
-  version: 2,
+  version: 3,
   migrations: {
+    3: (storedPrompt: string) =>
+      storedPrompt === CONTEXT_SYSTEM_PROMPT_FALLBACK.replace("{language}", "English")
+        ? CONTEXT_SYSTEM_PROMPT_FALLBACK
+        : storedPrompt,
     // Migration from v1 to v2: refresh the default prompt for users who never customized it
     2: (storedPrompt: string): string => {
       return storedPrompt === LEGACY_CONTEXT_SYSTEM_PROMPT_FALLBACK ? CONTEXT_SYSTEM_PROMPT_FALLBACK : storedPrompt
