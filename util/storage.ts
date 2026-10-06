@@ -33,6 +33,11 @@ export const modelChainStore = storage.defineItem<string[]>("local:modelChain", 
   version: 1,
 })
 
+export const showCommentStatisticsStore = storage.defineItem<boolean>("local:showCommentStatistics", {
+  fallback: true,
+  version: 1,
+})
+
 export const DEFAULT_MAX_COMMENTS = 100
 
 export const maxCommentsStore = storage.defineItem<number>("local:maxComments", {

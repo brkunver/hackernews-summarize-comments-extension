@@ -90,7 +90,14 @@ export function getHNStoryContext(): HNStoryContext {
   return { title, url }
 }
 
-export async function getHNCommentsForLLM(): Promise<string> {
+export type CommentStatistics = {
+  total: number
+  characters: number
+  words: number
+  byDepth: { depth: number; count: number }[]
+}
+
+export async function getHNCommentsForLLM(previewOnly = false) {
   const commentRows = Array.from(document.querySelectorAll<HTMLElement>(".comtr"))
 
   if (commentRows.length === 0) {
@@ -102,9 +109,9 @@ export async function getHNCommentsForLLM(): Promise<string> {
     maxCommentDepthStore.getValue(),
     randomCommentSelectionStore.getValue(),
   ])
-  const maxComments = normalizeMaxComments(configuredMaxComments)
+  const maxComments = previewOnly ? 100 : normalizeMaxComments(configuredMaxComments)
   const maxDepth = normalizeMaxDepth(configuredMaxDepth)
-  const useRandomSelection = randomSelection ?? DEFAULT_RANDOM_COMMENT_SELECTION
+  const useRandomSelection = previewOnly || (randomSelection ?? DEFAULT_RANDOM_COMMENT_SELECTION)
   const hasDepthLimit = maxDepth > 0
 
   const parsedComments: ParsedComment[] = []
@@ -172,5 +179,19 @@ export async function getHNCommentsForLLM(): Promise<string> {
     combinedString += `\n\n${selectionNote}`
   }
 
-  return combinedString
+  const depthCounts = new Map<number, number>()
+  for (const comment of selectedComments) {
+    const depth = comment.depth - 1
+    depthCounts.set(depth, (depthCounts.get(depth) ?? 0) + 1)
+  }
+  const statistics: CommentStatistics = {
+    total: selectedComments.length,
+    characters: combinedString.length,
+    words: selectedComments.reduce(
+      (count, comment) => count + (comment.text.replace(/^\s*\[[^\]]*\]: /, "").match(/\S+/g)?.length ?? 0),
+      0,
+    ),
+    byDepth: Array.from(depthCounts, ([depth, count]) => ({ depth, count })).sort((a, b) => a.depth - b.depth),
+  }
+  return { comments: combinedString, statistics }
 }

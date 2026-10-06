@@ -6,12 +6,14 @@ import {
   modelChainStore,
   modelStore,
   ongoingGenerationStore,
+  showCommentStatisticsStore,
   type GenerationErrorHistoryItem,
   type LastSummaryError,
 } from "~/util/storage"
 import { formatModelWithProvider, getConfiguredModelChain, getModelProvider, type AiProvider } from "~/util/models"
 import { getErrorMessage } from "~/util/errors"
-import { createSignal, onCleanup, onMount, Show } from "solid-js"
+import type { CommentStatistics } from "~/util/get-comments"
+import { createSignal, onCleanup, onMount, Show, For } from "solid-js"
 import ActionButtons from "./components/ActionButtons"
 import ErrorPanel from "./components/ErrorPanel"
 import StatusPanels from "./components/StatusPanels"
@@ -19,6 +21,7 @@ import SummaryCard from "./components/SummaryCard"
 import { getExtensionVersion } from "~/util/format"
 
 interface GetCommentsResponse {
+  statistics?: CommentStatistics
   success?: boolean
   comments?: string
   storyTitle?: string
@@ -83,6 +86,8 @@ export default function Popup() {
   let revision = -1
   let finishedGenerationId = 0
   const [isLoading, setIsLoading] = createSignal(false)
+  const [commentStatistics, setCommentStatistics] = createSignal<CommentStatistics | null>(null)
+  const [showCommentStatistics, setShowCommentStatistics] = createSignal(true)
   const [comments, setComments] = createSignal("")
   const [summary, setSummary] = createSignal("")
   const [summaryWithContext, setSummaryWithContext] = createSignal(false)
@@ -166,6 +171,7 @@ export default function Popup() {
 
   async function initializePopup(isMounted: () => boolean) {
     try {
+      setShowCommentStatistics(await showCommentStatisticsStore.getValue())
       const tab = await getActiveTab()
 
       if (!isMounted()) {
@@ -303,9 +309,10 @@ export default function Popup() {
     }
   }
 
-  async function getComments(withContext = false) {
+  async function getComments(withContext = false, previewOnly = false) {
     setIsLoading(true)
     clearMessages()
+    setCommentStatistics(null)
 
     try {
       const tab = await getActiveTab()
@@ -336,13 +343,21 @@ export default function Popup() {
       await loadCachedSummary(tab.url)
 
       const contentResponse = await withTimeout(
-        browser.tabs.sendMessage(tab.id, { action: "getComments", withContext }) as Promise<GetCommentsResponse>,
+        browser.tabs.sendMessage(tab.id, {
+          action: "getComments",
+          withContext,
+          previewOnly,
+        }) as Promise<GetCommentsResponse>,
         withContext ? 25000 : 8000,
         "Timed out while reading comments from the page. Reload the Hacker News tab and try again.",
       )
 
       if (contentResponse?.success && typeof contentResponse.comments === "string" && contentResponse.comments.trim()) {
         setComments(contentResponse.comments)
+        setCommentStatistics(contentResponse.statistics ?? null)
+        if (previewOnly) {
+          return
+        }
         console.log("Comments received:", contentResponse.comments)
 
         setIsProcessingInBackground(true)
@@ -607,10 +622,12 @@ export default function Popup() {
       }
     }
 
+    const unwatchStatistics = showCommentStatisticsStore.watch(value => setShowCommentStatistics(value))
     browser.runtime.onMessage.addListener(handleRuntimeMessage)
     void initializePopup(() => isMounted)
 
     onCleanup(() => {
+      unwatchStatistics()
       isMounted = false
       browser.runtime.onMessage.removeListener(handleRuntimeMessage)
     })
@@ -651,6 +668,7 @@ export default function Popup() {
           isBusy={isGeneratingSummary() || isProcessingInBackground()}
           isCancelling={isCancellingSummary()}
           onGenerate={getComments}
+          onGetComments={() => void getComments(false, true)}
           onCancel={cancelSummaryGeneration}
           onOpenOptions={openOptions}
         />
@@ -679,12 +697,28 @@ export default function Popup() {
           />
         </Show>
 
-        <Show when={comments() && !summary()}>
+        <Show when={showCommentStatistics() && commentStatistics()}>
+          <section class="rounded-xl border border-zinc-800 bg-zinc-900 p-3 text-xs text-zinc-400">
+            <h2 class="mb-2 text-sm font-semibold text-zinc-300">Selected comments</h2>
+            <p>
+              {commentStatistics()?.total} comments · {commentStatistics()?.characters.toLocaleString()} characters ·{" "}
+              {commentStatistics()?.words.toLocaleString()} words
+            </p>
+            <For each={commentStatistics()?.byDepth}>
+              {item => (
+                <p class="mt-1">
+                  {item.count} {item.depth === 0 ? "top level comments" : `depth-${item.depth} comments`}
+                </p>
+              )}
+            </For>
+          </section>
+        </Show>
+
+        <Show when={comments()}>
           <div>
-            <h2 class="mb-2 text-sm font-semibold text-zinc-300">Comments ({comments().length} chars)</h2>
+            <h2 class="mb-2 text-sm font-semibold text-zinc-300">Comments</h2>
             <div class="max-h-40 overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-900 p-3 text-xs text-zinc-400">
-              {comments().slice(0, 200)}
-              {comments().length > 200 ? "..." : ""}
+              {comments()}
             </div>
           </div>
         </Show>

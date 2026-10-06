@@ -16,6 +16,7 @@ import {
   timeoutStore,
   streamingStore,
   outputLanguageStore,
+  showCommentStatisticsStore,
   type SavedSummaryV2,
 } from "~/util/storage"
 import { DEFAULT_OUTPUT_LANGUAGE, normalizeOutputLanguage } from "~/util/prompt-language"
@@ -55,6 +56,7 @@ export default function Options() {
   const [newCustomModel, setNewCustomModel] = createSignal("")
   const [timeout, setTimeout] = createSignal(DEFAULT_SUMMARY_TIMEOUT_SECONDS)
   const [outputLanguage, setOutputLanguage] = createSignal(DEFAULT_OUTPUT_LANGUAGE)
+  const [showCommentStatistics, setShowCommentStatistics] = createSignal(true)
   const [streaming, setStreaming] = createSignal(false)
   const [isReady, setIsReady] = createSignal(false)
   const [saveMessage, setSaveMessage] = createSignal("")
@@ -95,6 +97,7 @@ export default function Options() {
     value => outputLanguageStore.setValue(value),
     600,
   )
+  autoSave.bind("Comment statistics", showCommentStatistics, value => showCommentStatisticsStore.setValue(value))
   autoSave.bind("Streaming", streaming, value => streamingStore.setValue(value))
   autoSave.bind("Random selection", randomSelection, value => randomCommentSelectionStore.setValue(value))
   autoSave.bind(
@@ -141,6 +144,7 @@ export default function Options() {
       setMaxDepth(normalizeMaxDepth(await maxCommentDepthStore.getValue()))
       setTimeout(await timeoutStore.getValue())
       setStreaming(await streamingStore.getValue())
+      setShowCommentStatistics(await showCommentStatisticsStore.getValue())
       setOutputLanguage(normalizeOutputLanguage(await outputLanguageStore.getValue()))
       setCachedSummaries(await savedSummariesStore.getValue())
       setIsReady(true)
@@ -205,6 +209,21 @@ export default function Options() {
             onHideBuiltinModel={model => setHiddenGoogleModels(prev => normalizeHiddenGoogleModels([...prev, model]))}
             onUnhideBuiltinModel={model => setHiddenGoogleModels(prev => prev.filter(item => item !== model))}
           />
+
+          <section class="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
+            <label class="flex cursor-pointer items-center gap-2 text-sm font-medium text-zinc-100">
+              <input
+                type="checkbox"
+                checked={showCommentStatistics()}
+                onChange={event => setShowCommentStatistics(event.currentTarget.checked)}
+                class="h-4 w-4 accent-orange-500"
+              />
+              Show comment statistics
+            </label>
+            <p class="mt-2 text-xs text-zinc-400">
+              Show selected comment counts by reply depth, word count, and character count.
+            </p>
+          </section>
 
           <CommentSettingsSection
             maxComments={maxComments()}

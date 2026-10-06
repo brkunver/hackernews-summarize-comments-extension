@@ -13,8 +13,9 @@ export default defineContentScript({
 
       const withContext = message?.withContext === true
 
-      getHNCommentsForLLM()
-        .then(async comments => {
+      async function readComments() {
+        try {
+          const { comments, statistics } = await getHNCommentsForLLM(message.previewOnly === true)
           const story = getHNStoryContext()
           let storyExcerpt = ""
           let storyExcerptSkipped = true
@@ -28,15 +29,17 @@ export default defineContentScript({
           sendResponse({
             success: true,
             comments,
+            statistics,
             storyTitle: story.title,
             storyUrl: story.url,
             storyExcerpt,
             storyExcerptSkipped,
           })
-        })
-        .catch(error => {
+        } catch (error) {
           sendResponse({ success: false, error: error instanceof Error ? error.message : String(error) })
-        })
+        }
+      }
+      void readComments()
 
       return true
     })

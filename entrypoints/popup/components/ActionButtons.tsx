@@ -6,6 +6,7 @@ type ActionButtonsProps = {
   disabled: boolean
   isBusy: boolean
   isCancelling: boolean
+  onGetComments: () => void
   onGenerate: (withContext: boolean) => void
   onCancel: () => void
   onOpenOptions: () => void
@@ -14,6 +15,13 @@ type ActionButtonsProps = {
 export default function ActionButtons(props: ActionButtonsProps) {
   return (
     <div class="space-y-2.5">
+      <button
+        onclick={props.onGetComments}
+        disabled={props.disabled}
+        class="w-full rounded-xl bg-zinc-800 py-2 font-medium text-zinc-200 transition-colors hover:bg-zinc-700 disabled:text-zinc-500"
+      >
+        Get comments
+      </button>
       <button
         onclick={() => props.onGenerate(false)}
         disabled={props.disabled}

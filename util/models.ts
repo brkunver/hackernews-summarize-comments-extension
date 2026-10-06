@@ -3,21 +3,17 @@ const MODEL_REF_SEPARATOR = "::"
 
 export const GOOGLE_AI_MODEL_FALLBACKS = [
   "gemini-3.1-flash-lite-preview",
-  "gemini-3-flash-preview",
-  "gemini-2.5-flash",
+  "gemini-3.8-flash",
+  "gemini-3.7-flash",
+  "gemini-3.6-flash",
+  "gemini-3.5-flash-lite",
 ] as const
 
 export const GROQ_AI_MODEL_FALLBACKS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"] as const
 
 export const CEREBRAS_AI_MODEL_FALLBACKS = ["zai-glm-4.7", "gpt-oss-120b", "qwen-3-235b-a22b-instruct-2507"] as const
 
-export const GOOGLE_AI_MODELS = [
-  ...GOOGLE_AI_MODEL_FALLBACKS,
-  "gemini-3.1-flash-lite",
-  "gemini-3.0-flash",
-  "gemini-2.5-flash-lite",
-  "gemma-3-27b-it",
-] as const
+export const GOOGLE_AI_MODELS = [...GOOGLE_AI_MODEL_FALLBACKS, "gemini-3.1-flash-lite", "gemma-3-27b-it"] as const
 
 const CUSTOM_GOOGLE_MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 export const MAX_CUSTOM_GOOGLE_MODEL_LENGTH = 128
@@ -256,5 +252,9 @@ export function getConfiguredModelChain(
     return modelChain
   }
 
-  return normalizeModelChain([legacyPreferredModel], customGoogleModels, hiddenGoogleModels)
+  const legacyChain = normalizeModelChain([legacyPreferredModel], customGoogleModels, hiddenGoogleModels)
+  if (legacyChain.length > 0) {
+    return legacyChain
+  }
+  return getAvailableModelRefs(customGoogleModels, hiddenGoogleModels).slice(0, 1)
 }
