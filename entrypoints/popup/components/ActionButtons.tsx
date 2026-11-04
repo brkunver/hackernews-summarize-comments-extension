@@ -6,6 +6,7 @@ type ActionButtonsProps = {
   disabled: boolean
   isBusy: boolean
   isCancelling: boolean
+  showOptions?: boolean
   onGetComments: () => void
   onGenerate: (withContext: boolean) => void
   onCancel: () => void
@@ -51,12 +52,14 @@ export default function ActionButtons(props: ActionButtonsProps) {
         </button>
       </Show>
 
-      <button
-        onclick={props.onOpenOptions}
-        class="w-full rounded-xl bg-zinc-800 py-2 font-medium text-zinc-300 transition-colors hover:bg-zinc-700"
-      >
-        Options
-      </button>
+      <Show when={props.showOptions !== false}>
+        <button
+          onclick={props.onOpenOptions}
+          class="w-full rounded-xl bg-zinc-800 py-2 font-medium text-zinc-300 transition-colors hover:bg-zinc-700"
+        >
+          Options
+        </button>
+      </Show>
     </div>
   )
 }

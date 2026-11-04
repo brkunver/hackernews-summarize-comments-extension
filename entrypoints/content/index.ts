@@ -1,9 +1,12 @@
-import { getHNCommentsForLLM, getHNStoryContext } from "@@/util/get-comments"
-import { fetchStoryExcerpt } from "@@/util/story-excerpt"
+import { collectHNComments } from "@@/util/collect-comments"
+import { isHackerNewsSubmissionUrl } from "@@/util/get-comments"
+import "~/assets/tailwind.css"
+import { mountSummarizerUi } from "./ui"
 
 export default defineContentScript({
   matches: ["https://news.ycombinator.com/*"],
-  main() {
+  cssInjectionMode: "ui",
+  main(ctx) {
     console.log("HackerNews Summarize Comments loaded")
 
     browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -11,30 +14,14 @@ export default defineContentScript({
         return false
       }
 
-      const withContext = message?.withContext === true
-
       async function readComments() {
         try {
-          const { comments, statistics } = await getHNCommentsForLLM(message.previewOnly === true)
-          const story = getHNStoryContext()
-          let storyExcerpt = ""
-          let storyExcerptSkipped = true
-
-          if (withContext && story.url !== "") {
-            const result = await fetchStoryExcerpt(story.url)
-            storyExcerpt = result.excerpt
-            storyExcerptSkipped = result.skipped
-          }
-
-          sendResponse({
-            success: true,
-            comments,
-            statistics,
-            storyTitle: story.title,
-            storyUrl: story.url,
-            storyExcerpt,
-            storyExcerptSkipped,
+          const collected = await collectHNComments({
+            withContext: message?.withContext === true,
+            previewOnly: message?.previewOnly === true,
           })
+
+          sendResponse({ success: true, ...collected })
         } catch (error) {
           sendResponse({ success: false, error: error instanceof Error ? error.message : String(error) })
         }
@@ -43,5 +30,11 @@ export default defineContentScript({
 
       return true
     })
+
+    if (isHackerNewsSubmissionUrl(location.href)) {
+      void mountSummarizerUi(ctx).catch(error => {
+        console.warn("Failed to mount the in-page summary panel.", error)
+      })
+    }
   },
 })

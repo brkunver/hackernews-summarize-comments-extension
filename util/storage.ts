@@ -38,6 +38,30 @@ export const showCommentStatisticsStore = storage.defineItem<boolean>("local:sho
   version: 1,
 })
 
+/** Remembers whether the in-page summary panel is expanded. */
+export const contentUiOpenStore = storage.defineItem<boolean>("local:contentUiOpen", {
+  fallback: true,
+  version: 1,
+})
+
+/** Font size multiplier for the in-page summary panel. */
+export const contentUiFontScaleStore = storage.defineItem<number>("local:contentUiFontScale", {
+  fallback: 1,
+  version: 1,
+})
+
+/** Width of the in-page summary panel in CSS pixels. */
+export const contentUiWidthStore = storage.defineItem<number>("local:contentUiWidth", {
+  fallback: 336,
+  version: 1,
+})
+
+/** Height of the in-page summary panel in CSS pixels; 0 keeps the automatic height. */
+export const contentUiHeightStore = storage.defineItem<number>("local:contentUiHeight", {
+  fallback: 0,
+  version: 1,
+})
+
 export const DEFAULT_MAX_COMMENTS = 100
 
 export const maxCommentsStore = storage.defineItem<number>("local:maxComments", {

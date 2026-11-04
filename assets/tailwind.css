@@ -19,6 +19,31 @@ button {
   scrollbar-color: #3f3f46 transparent;
 }
 
+/* In-page panel text scaling. Only the embedded content UI uses this scope;
+   `--hn-font-scale` is set by the panel's A− / A+ controls. */
+.hn-embedded-panel {
+  font-size: calc(1rem * var(--hn-font-scale, 1));
+}
+
+.hn-embedded-panel .text-\[11px\] {
+  font-size: calc(11px * var(--hn-font-scale, 1));
+}
+
+.hn-embedded-panel .text-xs {
+  font-size: calc(0.75rem * var(--hn-font-scale, 1));
+  line-height: calc(1rem * var(--hn-font-scale, 1));
+}
+
+.hn-embedded-panel .text-sm {
+  font-size: calc(0.875rem * var(--hn-font-scale, 1));
+  line-height: calc(1.25rem * var(--hn-font-scale, 1));
+}
+
+.hn-embedded-panel .text-base {
+  font-size: calc(1rem * var(--hn-font-scale, 1));
+  line-height: calc(1.5rem * var(--hn-font-scale, 1));
+}
+
 /* Rendered AI markdown (snarkdown output). The typography plugin is not
    installed, so `prose` classes would do nothing — style explicitly. */
 .hn-markdown {

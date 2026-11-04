@@ -42,6 +42,7 @@ export default defineBackground(() => {
   console.log("Hello background!", { id: browser.runtime.id })
 
   const activeGenerationControllers = new Map<string, AbortController>()
+  const generationTabIds = new Map<string, number>()
 
   let lastGenerationId = 0
   const generationIds = new WeakMap<AbortController, number>()
@@ -51,11 +52,39 @@ export default defineBackground(() => {
   }
 
   function sendRuntimeMessage(message: Record<string, unknown>) {
-    const controller = activeGenerationControllers.get(String(message.url))
+    const url = String(message.url)
+    const controller = activeGenerationControllers.get(url)
     const generationId = controller ? generationIds.get(controller) : undefined
-    void browser.runtime.sendMessage({ generationId, ...message }).catch(error => {
+    const payload = { generationId, ...message }
+
+    void browser.runtime.sendMessage(payload).catch(error => {
       console.debug("Runtime message had no active receiver.", error)
     })
+
+    // Content scripts do not receive runtime.sendMessage broadcasts, so the
+    // in-page panel is updated through its tab instead.
+    const tabId = generationTabIds.get(url)
+
+    if (tabId !== undefined) {
+      void browser.tabs.sendMessage(tabId, payload).catch(error => {
+        console.debug("Content UI message had no active receiver.", error)
+      })
+    }
+  }
+
+  async function resolveGenerationTabId(url: string, senderTabId?: number) {
+    if (senderTabId !== undefined) {
+      return senderTabId
+    }
+
+    try {
+      const tabs = await browser.tabs.query({})
+
+      return tabs.find(tab => tab.url === url)?.id
+    } catch (error) {
+      console.debug("Could not resolve the tab for summary updates.", error)
+      return undefined
+    }
   }
 
   function sendSafeResponse(sendResponse: SendResponse, response: unknown) {
@@ -384,11 +413,12 @@ ${comments}`
     } finally {
       if (isActiveGeneration(url, generationController)) {
         activeGenerationControllers.delete(url)
+        generationTabIds.delete(url)
       }
     }
   }
 
-  async function startSummaryGeneration(message: RuntimeMessage, sendResponse: SendResponse) {
+  async function startSummaryGeneration(message: RuntimeMessage, sendResponse: SendResponse, senderTabId?: number) {
     const url = typeof message.url === "string" ? message.url : ""
     let generationController: AbortController | null = null
 
@@ -414,6 +444,12 @@ ${comments}`
 
       generationController = new AbortController()
       activeGenerationControllers.set(url, generationController)
+
+      const generationTabId = await resolveGenerationTabId(url, senderTabId)
+
+      if (generationTabId !== undefined) {
+        generationTabIds.set(url, generationTabId)
+      }
 
       const currentModel = await getCurrentModel()
       const streaming = await streamingStore.getValue()
@@ -443,6 +479,7 @@ ${comments}`
       if (generationController && url.trim() !== "" && isActiveGeneration(url, generationController)) {
         generationController.abort()
         activeGenerationControllers.delete(url)
+        generationTabIds.delete(url)
 
         try {
           await ongoingGenerationStore.setValue(null)
@@ -582,9 +619,9 @@ ${comments}`
     }
   }
 
-  browser.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResponse) => {
+  browser.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendResponse) => {
     if (message?.action === "generateSummary") {
-      void startSummaryGeneration(message, sendResponse)
+      void startSummaryGeneration(message, sendResponse, sender.tab?.id)
       return true
     }
 

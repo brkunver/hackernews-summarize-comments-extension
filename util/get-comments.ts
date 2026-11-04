@@ -68,6 +68,10 @@ export interface HNStoryContext {
   url: string
 }
 
+export function isHackerNewsSubmissionUrl(url: string): boolean {
+  return url.includes("news.ycombinator.com/item?id=")
+}
+
 export function getHNStoryContext(): HNStoryContext {
   const titleLink = document.querySelector<HTMLElement>(".titleline > a")
 
