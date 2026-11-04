@@ -15,7 +15,7 @@
     "zip:firefox": "wxt zip -b firefox",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "tsc --noEmit",
+    "check": "bun check",
     "postinstall": "wxt prepare",
     "manager": "bun manager.cjs bun"
   },
